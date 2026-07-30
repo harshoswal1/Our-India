@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+geoalchemy2
+psycopg2-binary
+pydantic
+python-dotenv
+groq
+google-genai
+feedparser
+beautifulsoup4
+requests
+pgvector
+
