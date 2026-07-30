@@ -1,0 +1,40 @@
+# ===========================
+# Our India — Root .gitignore
+# ===========================
+
+# ---- Android ----
+android/.gradle/
+android/build/
+android/app/build/
+android/app/schemas/
+android/local.properties
+android/captures/
+android/.cxx/
+android/.externalNativeBuild/
+*.iml
+
+# ---- Secrets & Keys ----
+local.properties
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.jks
+*.keystore
+google-services.json
+
+# ---- OS files ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- IDE / Editor ----
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- Logs ----
+*.log

@@ -1,15 +1,15 @@
 <div align="center">
 
 # 🇮🇳 Our India
-### Unified Civic-Tech Platform
+### Unified Civic-Tech Platform — Native Android
 
-**AI-powered public grievance, news intelligence & civic transparency platform for Indian citizens**
+**AI-powered public grievance, news intelligence & civic transparency app for Indian citizens**
 
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
-[![Next.js](https://img.shields.io/badge/Frontend-Next.js%2016-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
-[![PostgreSQL](https://img.shields.io/badge/Database-Neon%20PostgreSQL-336791?style=for-the-badge&logo=postgresql)](https://neon.tech)
-[![Groq](https://img.shields.io/badge/AI-Groq%20Llama%203.3-FF6B35?style=for-the-badge)](https://groq.com)
-[![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-4285F4?style=for-the-badge&logo=google)](https://ai.google.dev)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?style=for-the-badge&logo=jetpackcompose)](https://developer.android.com/compose)
+[![Hilt](https://img.shields.io/badge/DI-Hilt%20(Dagger)-FF6F00?style=for-the-badge)](https://dagger.dev/hilt/)
+[![Room](https://img.shields.io/badge/Offline-Room%20DB-009688?style=for-the-badge)](https://developer.android.com/training/data-storage/room)
+[![Maps](https://img.shields.io/badge/Maps-Google%20Maps%20SDK-34A853?style=for-the-badge&logo=googlemaps)](https://developers.google.com/maps)
 [![Cost](https://img.shields.io/badge/Monthly%20Cost-%240-brightgreen?style=for-the-badge)](/)
 
 </div>
@@ -26,271 +26,91 @@ Across India, civic information is **fragmented** across 100+ portals, news site
 - Know which MP/MLA/Corporator represents their area
 - Follow election results with context
 
-**Our India** solves all of this in a **single, AI-powered platform**.
+**Our India** solves all of this in a **single, offline-first native Android application**.
 
 ---
 
-## 🏗️ How It Works — System Architecture
+## 🏗️ System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        USER (Browser / Android)                     │
-└─────────────────────────┬───────────────────────────────────────────┘
-                          │  HTTP Requests
-┌─────────────────────────▼───────────────────────────────────────────┐
-│                 NEXT.JS FRONTEND  (Port 3000)                       │
-│   Dashboard  │  Grievances  │  Legal Chat  │  Elections  │  Leaders │
-└─────────────────────────┬───────────────────────────────────────────┘
-                          │  REST API Calls
-┌─────────────────────────▼───────────────────────────────────────────┐
-│                  FASTAPI BACKEND  (Port 8000)                       │
-│                                                                     │
-│  ┌────────────┐  ┌──────────────┐  ┌───────────────────────────┐   │
-│  │  Grievance │  │  News Scraper│  │   AI Router               │   │
-│  │  Engine    │  │  (RSS Feeds) │  │  Groq ──► Gemini Fallback │   │
-│  └────────────┘  └──────────────┘  └───────────────────────────┘   │
-│                                                                     │
-│  ┌────────────┐  ┌──────────────┐  ┌───────────────────────────┐   │
-│  │   Legal    │  │  Elections   │  │  Leaders Directory        │   │
-│  │  RAG Chat  │  │  Tracker     │  │  (PostGIS Resolution)     │   │
-│  └────────────┘  └──────────────┘  └───────────────────────────┘   │
-└─────────────────────────┬───────────────────────────────────────────┘
-                          │  SQL / Vector Queries
-┌─────────────────────────▼───────────────────────────────────────────┐
-│              NEON POSTGRESQL DATABASE (Cloud)                       │
-│   PostGIS (Spatial)  │  pgvector (AI Embeddings)  │  uuid-ossp     │
-│                                                                     │
-│   Tables: grievances │ civic_records │ user_profiles │ area_leaders │
-│            legal_documents │ lgd_jurisdictions │ audit_logs        │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                    NATIVE ANDROID APP (Kotlin)                       │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │                   PRESENTATION LAYER                           │  │
+│  │  Jetpack Compose  │  ViewModels  │  StateFlow  │  Material 3  │  │
+│  │  Google Maps SDK  │  CameraX     │  Neo-Brutalism Theme       │  │
+│  └───────────────────────────┬────────────────────────────────────┘  │
+│  ┌───────────────────────────▼────────────────────────────────────┐  │
+│  │                      DOMAIN LAYER                              │  │
+│  │  Use Cases  │  Domain Models  │  Repository Interfaces         │  │
+│  └───────────────────────────┬────────────────────────────────────┘  │
+│  ┌───────────────────────────▼────────────────────────────────────┐  │
+│  │                       DATA LAYER                               │  │
+│  │  Room SQLite (Offline)  │  Retrofit (Remote)  │  WorkManager   │  │
+│  └───────────────────────────┬────────────────────────────────────┘  │
+└──────────────────────────────┼───────────────────────────────────────┘
+                               │ HTTPS / REST
+┌──────────────────────────────▼───────────────────────────────────────┐
+│                    FASTAPI BACKEND (Server)                          │
+│  Grievances │ News Scraper │ AI Router (Groq → Gemini) │ Legal RAG  │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼───────────────────────────────────────┐
+│              NEON POSTGRESQL (PostGIS + pgvector)                    │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 🧩 The Six Core Modules
 
-### Module 1 — 📋 Grievance Redressal Engine
+### 1. 📋 Grievance Redressal Engine
+Citizens report civic issues with **native camera** + **GPS pin-drop**. AI validates the photo (Gemini Vision), checks for duplicates within 200m (PostGIS), and routes to the correct government department automatically. Offline submissions are queued in Room and synced via WorkManager.
 
-> Citizens report civic issues, the AI validates them and routes them to the right department.
+### 2. 🗺️ Regional News Map
+Live civic issues scraped from Google News RSS → classified by AI (Groq Llama 3.3) → displayed as color-coded markers on a **native Google Map**. Red = critical, Yellow = moderate, Green = low. Bottom sheet shows AI summary + upvote button.
 
-```
-User Reports Issue
-       │
-       ▼
- GPS Location Captured
-       │
-       ▼
- Duplicate Check (PostGIS 200m radius)
-       │
-       ├── Duplicate Found → Suggest Upvote Instead
-       │
-       └── New Issue
-               │
-               ▼
-         Gemini Vision validates photo
-               │
-               ▼
-         AI assigns Department (Responsibility Matrix)
-               │
-               ▼
-         Saved to PostgreSQL
-               │
-               ▼
-         Status: SUBMITTED → VERIFIED (5 upvotes) → IN_PROGRESS → RESOLVED
-```
+### 3. ⚖️ AI Legal Advisor (RAG)
+Citizens ask legal questions in plain language → query is embedded (Gemini Embedding-2, 3072D) → matched against indexed Indian laws via pgvector → answer generated with citations. Cached locally for 30 days.
 
-**Department Routing Matrix:**
+### 4. 🗳️ Live Election Tracker
+Real-time constituency-level results with party-wise tallies, candidate vote bars, and round-by-round counting. Mock data available year-round for demonstration.
 
-| Category | Assigned Department |
-|----------|---------------------|
-| ROADS | Public Works Department (PWD) |
-| WATER | Municipal Water Department |
-| GARBAGE | Sanitation & Solid Waste Management |
-| ELECTRICITY | State Electricity Board (MSEDCL) |
-| TRAFFIC | Traffic Police Department |
-| POLLUTION | State Pollution Control Board |
+### 5. 🏛️ All Party Structure
+Visual expandable tree of political party hierarchies from National → State → District → Ward. Updated monthly. Fully cached offline in Room.
 
----
-
-### Module 2 — 🗺️ Regional News Map & AI Pipeline
-
-> Live civic issues scraped from Google News RSS, classified by AI, and pinned on an interactive district map.
-
-```
-Google News RSS Feeds
-       │  (36 Maharashtra Districts × Keywords)
-       ▼
- feedparser + BeautifulSoup4
-  → Clean article text
-       │
-       ▼
- MD5 Deduplication
-  → Skip if already in DB
-       │
-       ▼
- Groq Llama-3.3-70B (Fast LPU)
-  → JSON Classification Output:
-     • core_topic (Water Scarcity / Infrastructure / Crime...)
-     • problem_rate (0–100 severity)
-     • government_body (responsible dept)
-     • specific_location
-     • ai_suggested_solution
-       │
-       ▼
- Severity Mapped to 1–5 Scale
-       │
-       ▼
- Stored in civic_records with PostGIS Point geometry
-       │
-       ▼
- Interactive Map: Red (Sev 4–5) │ Yellow (2–3) │ Green (1)
-```
-
-**Covered Districts:** Kolhapur, Pune, Nashik, Nagpur, Aurangabad, Thane, Mumbai (+ 29 more)
-
----
-
-### Module 3 — ⚖️ AI Legal Advisor (RAG Pipeline)
-
-> Citizen asks a legal question → AI searches official legal documents → Returns answer with citations.
-
-```
-User Question: "Can police tow my vehicle if I'm sitting in it?"
-       │
-       ▼
- Gemini Embedding-2 (3072-dimensional vector)
-  → Embed the query
-       │
-       ▼
- pgvector Cosine Search on legal_documents table
-  → Top 3 matching legal chunks retrieved
-       │
-       ▼
- Context: Motor Vehicles Act + DVR 2017 + Court precedents
-       │
-       ▼
- Groq Llama-3.3-70B
-  → Generates answer with citations
-       │
-       ▼
- Response includes:
-  • Plain language answer
-  • Legal citations (Act name + section)
-  • Disclaimer: "Consult a certified legal expert"
-```
-
-**Legal Sources Indexed:**
-- Motor Vehicles Act, 1988
-- Right to Information Act, 2005
-- Municipal Corporation Acts
-- Bharatiya Nyaya Sanhita (BNS)
-- High Court Precedents
-
----
-
-### Module 4 — 🗳️ Live Election Tracker
-
-> National seat tallies, state-wise breakdown, constituency-level counting rounds.
-
-**Features:**
-- Party-wise seat totals (NDA / INDIA Alliance / Others)
-- Constituency drill-down with candidate vote counts
-- Round-by-round counting progress
-- Lead/trailing status per candidate
-
----
-
-### Module 5 — 🏛️ All Party Structure
-
-> Visual tree of political party organization from national level down to district heads.
-
-```
-National President (J.P. Nadda)
-       └── State President (Maharashtra) - Chandrashekhar Bawankule
-               ├── District Head (Kolhapur) - Rahul Desai
-               └── District Head (Pune) - Dhirendra Mane
-```
-
----
-
-### Module 6 — 👤 Area-Based Leaders Directory
-
-> Enter your GPS location → instantly see your MP, MLA, Corporator, Mayor, and Commissioner.
-
-```
-User Location (lat, lng)
-       │
-       ▼
- PostGIS Point-in-Polygon Matching
-  → Resolves to LGD Ward Code
-       │
-       ▼
- Returns:
-  • MP → Name, Party, Constituency, Phone, Email
-  • MLA → Name, Party, Constituency, Phone, Email
-  • Corporator / Mayor → Local contacts
-```
+### 6. 👤 Area-Based Leaders Directory
+Enter GPS location → instantly see your MP, MLA, Corporator, Mayor, Commissioner with contact details. One-tap call/email actions.
 
 ---
 
 ## 🧠 AI Routing Strategy
 
-The platform distributes AI tasks intelligently to avoid throttling and stay within **zero-cost free tiers**.
-
-| Task | Primary Model | Fallback | Free Tier Limit |
-|------|--------------|----------|-----------------|
-| News Classification | **Groq** (Llama-3.3-70B) | Gemini 2.5 Flash | 30 RPM |
-| Image Verification | **Gemini** 2.5 Flash | Auto-approve | 1,500 req/day |
-| Legal RAG Answer | **Groq** (Llama-3.3-70B) | Gemini 2.5 Flash | 10K req/day |
-| Text Embeddings | **Gemini** Embedding-2 (3072D) | Zero vector | 1,500 req/day |
-
-**Fallback Logic:**
-```python
-try:
-    answer = groq_client.chat()   # Primary
-except:
-    answer = gemini_client.generate()  # Fallback
-```
+| Task | Primary Model | Fallback |
+|------|--------------|----------|
+| News Classification | Groq (Llama-3.3-70B) | Gemini 2.5 Flash |
+| Photo Verification | Gemini 2.5 Flash | Auto-approve |
+| Legal RAG Answer | Groq (Llama-3.3-70B) | Gemini 2.5 Flash |
+| Text Embeddings | Gemini Embedding-2 (3072D) | Zero vector |
 
 ---
 
-## 🗄️ Database Schema
+## 📱 Android Tech Stack
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    NEON POSTGRESQL                                   │
-│                                                                     │
-│  user_profiles          grievances                                  │
-│  ┌──────────────┐       ┌────────────────────────────────────┐     │
-│  │ id (str)     │──┐    │ id, user_id (FK), category        │     │
-│  │ email        │  └───►│ description, latitude, longitude   │     │
-│  │ subscription │       │ geom GEOMETRY(POINT, 4326)         │     │
-│  │ fcm_token    │       │ status, assigned_department        │     │
-│  │ created_at   │       │ media_url, upvotes                 │     │
-│  └──────────────┘       └────────────────────────────────────┘     │
-│                                                                     │
-│  civic_records           legal_documents                           │
-│  ┌──────────────┐        ┌──────────────────────────────────┐     │
-│  │ id, title    │        │ id, title, content               │     │
-│  │ summary      │        │ citations                        │     │
-│  │ category     │        │ embedding VECTOR(3072)  ◄── AI   │     │
-│  │ severity 1-5 │        └──────────────────────────────────┘     │
-│  │ geom POINT   │                                                   │
-│  │ dedup_hash   │        area_leaders                              │
-│  │ source, link │        ┌──────────────────────────────────┐     │
-│  └──────────────┘        │ id, name, party, role            │     │
-│                           │ constituency, lgd_code           │     │
-│  lgd_jurisdictions        │ contact_phone, contact_email     │     │
-│  ┌──────────────┐        └──────────────────────────────────┘     │
-│  │ lgd_code     │                                                   │
-│  │ name, level  │  ← STATE / DISTRICT / WARD                      │
-│  │ boundary     │                                                   │
-│  │ POLYGON 4326 │                                                   │
-│  └──────────────┘                                                   │
-└─────────────────────────────────────────────────────────────────────┘
-
-Extensions: PostGIS │ postgis_topology │ uuid-ossp │ pgcrypto │ pgvector
-```
+| Component | Technology |
+|-----------|-----------|
+| **Language** | Kotlin 2.0 |
+| **UI** | Jetpack Compose + Material 3 |
+| **Architecture** | Clean Architecture + MVVM |
+| **DI** | Hilt (Dagger) |
+| **Local DB** | Room (SQLite) — 7 tables |
+| **Networking** | Retrofit 2 + KotlinX Serialization |
+| **Background Sync** | WorkManager (6-hour periodic) |
+| **Maps** | Google Maps SDK for Android |
+| **Camera** | CameraX |
+| **Image Loading** | Coil 3 |
+| **Logging** | Timber |
+| **Build** | Gradle Kotlin DSL + Version Catalog |
 
 ---
 
@@ -298,153 +118,140 @@ Extensions: PostGIS │ postgis_topology │ uuid-ossp │ pgcrypto │ pgvector
 
 ```
 Our-India/
+├── android/
+│   ├── app/
+│   │   ├── src/main/
+│   │   │   ├── AndroidManifest.xml
+│   │   │   ├── java/com/ourindia/app/
+│   │   │   │   ├── OurIndiaApplication.kt       # Hilt entry point
+│   │   │   │   ├── MainActivity.kt               # Compose host activity
+│   │   │   │   ├── data/
+│   │   │   │   │   ├── local/
+│   │   │   │   │   │   ├── entity/Entities.kt    # 7 Room entities
+│   │   │   │   │   │   ├── dao/Daos.kt           # All DAOs with Flow
+│   │   │   │   │   │   └── OurIndiaDatabase.kt   # Room DB class
+│   │   │   │   │   └── remote/
+│   │   │   │   │       └── OurIndiaApiService.kt  # Retrofit endpoints
+│   │   │   │   ├── di/                            # Hilt modules
+│   │   │   │   ├── ui/
+│   │   │   │   │   ├── theme/
+│   │   │   │   │   │   ├── Color.kt              # Civic Brutalism palette
+│   │   │   │   │   │   ├── Type.kt               # Typography scale
+│   │   │   │   │   │   └── Theme.kt              # Dual-mode theme
+│   │   │   │   │   ├── components/                # NeoCard, NeoButton
+│   │   │   │   │   ├── screens/                   # All 6 module screens
+│   │   │   │   │   └── navigation/                # NavHost + bottom bar
+│   │   │   │   └── worker/                        # WorkManager SyncWorker
+│   │   │   └── res/
+│   │   │       └── values/
+│   │   │           ├── strings.xml
+│   │   │           └── themes.xml
+│   │   ├── build.gradle.kts                       # App dependencies
+│   │   └── proguard-rules.pro
+│   ├── gradle/libs.versions.toml                  # Version catalog
+│   ├── build.gradle.kts                           # Project-level
+│   ├── settings.gradle.kts
+│   ├── gradle.properties
+│   └── local.properties                           # 🔒 API keys (NOT committed)
 │
-├── backend/                    ← FastAPI Python Server
-│   ├── main.py                 # All 6 module REST endpoints
-│   ├── ai_router.py            # Groq + Gemini AI orchestration
-│   ├── scraper.py              # Google News RSS ingestion pipeline
-│   ├── models.py               # SQLAlchemy + GeoAlchemy2 + pgvector models
-│   ├── database.py             # Neon PostgreSQL connection pool
-│   ├── seed_db.py              # Legal document seeder (with real embeddings)
-│   ├── init_db.py              # Enable PostGIS, pgvector, uuid-ossp extensions
-│   ├── create_tables.py        # Create all DB tables from models
-│   ├── requirements.txt        # Python dependencies
-│   └── .env                    # API Keys & Database URL (not committed)
-│
-├── frontend/                   ← Next.js 16 Web App
-│   ├── src/app/
-│   │   ├── page.tsx            # Landing page & region search
-│   │   └── dashboard/
-│   │       └── page.tsx        # Issues dashboard with Recharts
-│   ├── package.json
-│   └── next.config.ts
-│
-└── README.md                   ← This file
+├── .gitignore
+└── README.md                                      # ← This file
 ```
+
+---
+
+## 🗄️ Room Database (Offline Cache)
+
+| Table | Records | TTL | Purpose |
+|-------|---------|-----|---------|
+| `cached_issues` | 500 max | 7 days | News map civic issues |
+| `grievances` | User's + nearby | — | Complaints + drafts |
+| `legal_cache` | Q&A pairs | 30 days | Legal RAG response cache |
+| `party_structure` | Full tree | Monthly | Party org hierarchy |
+| `leaders` | By district | 7 days | Elected representatives |
+| `offline_queue` | Pending actions | 24 hours | Sync queue |
+| `election_results` | All results | Per sync | Election data cache |
 
 ---
 
 ## ⚡ Getting Started
 
 ### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- Git
+- Android Studio Hedgehog+ (2024.1+)
+- JDK 17
+- Android SDK 35
+- A Google Maps API Key
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/your-org/Our-India.git
-cd Our-India
-```
-
-### 2. Backend Setup
+### 1. Clone
 
 ```bash
-cd backend
-
-# Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Mac/Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-cp .env.example .env
-# Edit .env with your credentials (see Environment Variables section)
-
-# Initialize database (enable PostGIS, pgvector)
-python init_db.py
-
-# Create all tables
-python create_tables.py
-
-# Seed legal documents with AI embeddings
-python seed_db.py
-
-# Start the server
-uvicorn main:app --reload --port 8000
+git clone https://github.com/harshoswal1/Our-India.git
+cd Our-India/android
 ```
 
-### 3. Frontend Setup
+### 2. Configure API Keys
+
+Create `android/local.properties`:
+```properties
+MAPS_API_KEY=your_google_maps_api_key_here
+API_BASE_URL=http://10.0.2.2:8000
+```
+
+### 3. Build & Run
 
 ```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start the dev server
-npm run dev
+# Open in Android Studio, or:
+./gradlew assembleDebug
 ```
 
-### 4. Access the App
-
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| API Docs (Swagger) | http://localhost:8000/docs |
+Install the APK on an emulator or physical device.
 
 ---
 
-## 🔑 Environment Variables
+## 🔒 Security
 
-Create a `backend/.env` file:
-
-```env
-# Neon PostgreSQL (get free at neon.tech)
-DATABASE_URL=postgresql://user:pass@ep-xxxx.neon.tech/neondb?sslmode=require
-
-# Groq API (free at console.groq.com)
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
-
-# Google Gemini API (free at aistudio.google.com)
-GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxx
-```
+| Protection | Implementation |
+|-----------|----------------|
+| API keys | Loaded from `local.properties` → `BuildConfig` (never committed) |
+| ProGuard/R8 | Release builds minified & obfuscated |
+| Certificate Pinning | SHA-256 pins in OkHttp (production) |
+| Room Encryption | SQLCipher ready |
+| Input Sanitization | All user input sanitized before API calls |
 
 ---
 
-## 🌐 API Reference
+## 🌐 Backend API Endpoints (Consumed by Android)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/` | Health check |
-| `GET` | `/api/test-db` | Verify database connection |
-| `POST` | `/api/v1/auth/login` | Create/fetch user profile |
-| `POST` | `/api/v1/grievances` | Submit new grievance |
-| `GET` | `/api/v1/grievances` | Get all grievances |
-| `POST` | `/api/v1/grievances/{id}/upvote` | Upvote a grievance |
-| `GET` | `/api/v1/news-map` | Get classified civic news |
-| `POST` | `/api/v1/news-map/trigger-scraper` | Trigger background scraper |
-| `POST` | `/api/v1/ai-legal/query` | Ask a legal question (RAG) |
-| `GET` | `/api/v1/elections/tracker` | Get election tally data |
-| `GET` | `/api/v1/party/structure` | Get party org tree |
-| `GET` | `/api/v1/leaders?latitude=&longitude=` | Leaders by location |
+| `POST` | `/api/v1/auth/login` | Firebase Auth login |
+| `POST` | `/api/v1/grievances` | Submit grievance |
+| `GET` | `/api/v1/grievances` | Get grievances |
+| `POST` | `/api/v1/grievances/{id}/upvote` | Upvote |
+| `GET` | `/api/v1/news-map` | Get classified news |
+| `POST` | `/api/v1/ai-legal/query` | Legal question (RAG) |
+| `GET` | `/api/v1/elections/tracker` | Election data |
+| `GET` | `/api/v1/party/structure` | Party tree |
+| `GET` | `/api/v1/leaders?lat=&lng=` | Leaders by GPS |
 
 ---
 
 ## 💰 Total Monthly Cost: $0
 
-| Service | What We Use | Free Tier |
-|---------|------------|-----------|
-| **Neon** | PostgreSQL + PostGIS + pgvector | 500MB, 50GB bandwidth |
-| **Groq** | Llama-3.3-70B for NLP & legal | 30 RPM, 10K req/day |
-| **Google Gemini** | Vision + Embeddings | 1,500 req/day |
-| **Vercel/Railway** | Backend + Frontend hosting | Free tier |
+| Service | Free Tier |
+|---------|-----------|
+| **Neon PostgreSQL** | 500MB + PostGIS + pgvector |
+| **Groq** | 30 RPM, 10K req/day |
+| **Google Gemini** | 1,500 req/day |
+| **Google Maps SDK** | $200/month free credit |
 
 ---
 
-
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create your feature branch: `git checkout -b feature/my-feature`
-3. Commit your changes: `git commit -m "Add my feature"`
-4. Push to the branch: `git push origin feature/my-feature`
-5. Open a Pull Request
+1. Fork → `git checkout -b feature/my-feature`
+2. Commit → `git push origin feature/my-feature`
+3. Open a Pull Request
 
 ---
 

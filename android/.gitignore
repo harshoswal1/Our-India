@@ -1,0 +1,21 @@
+# Built outputs
+*.iml
+.gradle
+/local.properties
+/.idea
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# App build outputs
+app/build/
+app/schemas/
+
+# Keystore (never commit)
+*.jks
+*.keystore
+
+# Secrets
+google-services.json

@@ -1,0 +1,44 @@
+<resources>
+    <string name="app_name">Our India</string>
+    <string name="tagline">Your Voice. Your India. 🇮🇳</string>
+
+    <!-- Navigation -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_map">Map</string>
+    <string name="nav_legal">Legal AI</string>
+    <string name="nav_leaders">Leaders</string>
+
+    <!-- Grievance -->
+    <string name="file_grievance">File Grievance</string>
+    <string name="grievance_title_hint">Brief title (max 50 chars)</string>
+    <string name="grievance_desc_hint">Describe the issue in detail…</string>
+    <string name="submit_grievance">Submit Grievance</string>
+    <string name="take_photo">Take Photo</string>
+    <string name="drop_pin">Drop Pin on Map</string>
+    <string name="upvote">Upvote</string>
+
+    <!-- Legal -->
+    <string name="legal_query_hint">Ask a legal question…</string>
+    <string name="legal_disclaimer">⚖️ This is machine-generated guidance. Consult a certified legal expert for formal advice.</string>
+
+    <!-- Status -->
+    <string name="status_submitted">Submitted</string>
+    <string name="status_verified">Verified</string>
+    <string name="status_in_progress">In Progress</string>
+    <string name="status_resolved">Resolved</string>
+    <string name="status_rejected">Rejected</string>
+
+    <!-- General -->
+    <string name="retry">Retry</string>
+    <string name="loading">Loading…</string>
+    <string name="no_internet">No internet connection. Working offline.</string>
+    <string name="offline_saved">Saved offline. Will sync when connected.</string>
+
+    <!-- Content Descriptions (Accessibility) -->
+    <string name="cd_severity_critical">Critical severity issue</string>
+    <string name="cd_severity_high">High severity issue</string>
+    <string name="cd_severity_moderate">Moderate severity issue</string>
+    <string name="cd_severity_low">Low severity issue</string>
+    <string name="cd_call_leader">Call leader</string>
+    <string name="cd_email_leader">Email leader</string>
+</resources>
