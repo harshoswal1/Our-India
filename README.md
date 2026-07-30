@@ -437,22 +437,6 @@ GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxx
 
 ---
 
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | Next.js 16, React 19, Tailwind CSS, Recharts |
-| **Backend** | FastAPI, Uvicorn, Python 3.12 |
-| **Database** | PostgreSQL (Neon), PostGIS, pgvector |
-| **ORM** | SQLAlchemy 2.0, GeoAlchemy2 |
-| **AI - NLP** | Groq API (Llama-3.3-70B-Versatile) |
-| **AI - Vision** | Google Gemini 2.5 Flash |
-| **AI - Embeddings** | Gemini Embedding-2 (3072D) |
-| **Web Scraping** | feedparser, BeautifulSoup4 |
-| **Spatial** | PostGIS, GeoAlchemy2 |
-| **Vector Search** | pgvector (cosine / L2 distance) |
-
----
 
 ## 🤝 Contributing
 
