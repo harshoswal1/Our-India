@@ -30,35 +30,6 @@ Across India, civic information is **fragmented** across 100+ portals, news site
 
 ---
 
-## 🏗️ System Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                    NATIVE ANDROID APP (Kotlin)                       │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │                   PRESENTATION LAYER                           │  │
-│  │  Jetpack Compose  │  ViewModels  │  StateFlow  │  Material 3  │  │
-│  │  Google Maps SDK  │  CameraX     │  Neo-Brutalism Theme       │  │
-│  └───────────────────────────┬────────────────────────────────────┘  │
-│  ┌───────────────────────────▼────────────────────────────────────┐  │
-│  │                      DOMAIN LAYER                              │  │
-│  │  Use Cases  │  Domain Models  │  Repository Interfaces         │  │
-│  └───────────────────────────┬────────────────────────────────────┘  │
-│  ┌───────────────────────────▼────────────────────────────────────┐  │
-│  │                       DATA LAYER                               │  │
-│  │  Room SQLite (Offline)  │  Retrofit (Remote)  │  WorkManager   │  │
-│  └───────────────────────────┬────────────────────────────────────┘  │
-└──────────────────────────────┼───────────────────────────────────────┘
-                               │ HTTPS / REST
-┌──────────────────────────────▼───────────────────────────────────────┐
-│                    FASTAPI BACKEND (Server)                          │
-│  Grievances │ News Scraper │ AI Router (Groq → Gemini) │ Legal RAG  │
-└──────────────────────────────┬───────────────────────────────────────┘
-                               │
-┌──────────────────────────────▼───────────────────────────────────────┐
-│              NEON POSTGRESQL (PostGIS + pgvector)                    │
-└──────────────────────────────────────────────────────────────────────┘
-```
 
 ---
 
@@ -84,16 +55,7 @@ Enter GPS location → instantly see your MP, MLA, Corporator, Mayor, Commission
 
 ---
 
-## 🧠 AI Routing Strategy
 
-| Task | Primary Model | Fallback |
-|------|--------------|----------|
-| News Classification | Groq (Llama-3.3-70B) | Gemini 2.5 Flash |
-| Photo Verification | Gemini 2.5 Flash | Auto-approve |
-| Legal RAG Answer | Groq (Llama-3.3-70B) | Gemini 2.5 Flash |
-| Text Embeddings | Gemini Embedding-2 (3072D) | Zero vector |
-
----
 
 ## 📱 Android Tech Stack
 
