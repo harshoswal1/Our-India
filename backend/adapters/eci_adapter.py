@@ -2,7 +2,7 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 from typing import List
-from ..core.models import ExtractedAssignment, ExtractedPolitician, ExtractedPosition
+from backend.core.models import ExtractedAssignment, ExtractedPolitician, ExtractedPosition
 
 logger = logging.getLogger(__name__)
 

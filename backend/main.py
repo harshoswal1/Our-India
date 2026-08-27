@@ -1,8 +1,8 @@
 import logging
 import sys
 import traceback
-from core.database import DatabaseClient
-from adapters.eci_adapter import ECIScraperAdapter
+from backend.core.database import DatabaseClient
+from backend.adapters.eci_adapter import ECIScraperAdapter
 
 # Configure logging
 logging.basicConfig(

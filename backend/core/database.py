@@ -2,7 +2,7 @@ import os
 import logging
 from typing import List, Optional
 from supabase import create_client, Client
-from .models import ExtractedAssignment, ExtractedPolitician
+from backend.core.models import ExtractedAssignment, ExtractedPolitician
 
 logger = logging.getLogger(__name__)
 
