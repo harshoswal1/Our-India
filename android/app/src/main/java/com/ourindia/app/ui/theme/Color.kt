@@ -35,6 +35,7 @@ object CivicColors {
     val INC = Color(0xFF00BFFF)
     val AAP = Color(0xFF0077B6)
     val NCP = Color(0xFF005F73)
+    val TMC = Color(0xFF2A9D8F)
     val Others = Color(0xFF6B7280)
 
     // Status Colors

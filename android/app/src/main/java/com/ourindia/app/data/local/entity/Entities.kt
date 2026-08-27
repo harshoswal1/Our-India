@@ -4,71 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/** Cached civic issues from the news scraping pipeline */
-@Entity(
-    tableName = "cached_issues",
-    indices = [Index("district"), Index("expiresAt")]
-)
-data class CachedIssueEntity(
-    @PrimaryKey val id: String,
-    val title: String,
-    val summary: String,
-    val category: String,
-    val severity: Int,
-    val district: String,
-    val state: String,
-    val lat: Double,
-    val lng: Double,
-    val responsibleDept: String,
-    val sourceUrl: String,
-    val sourceName: String,
-    val upvoteCount: Int,
-    val createdAt: Long,
-    val expiresAt: Long // 7-day TTL
-)
-
-/** User-submitted grievances + nearby grievances cache */
-@Entity(
-    tableName = "grievances",
-    indices = [Index("userId"), Index("status")]
-)
-data class GrievanceEntity(
-    @PrimaryKey val id: String,
-    val userId: String,
-    val title: String,
-    val description: String,
-    val category: String,
-    val severity: Int,
-    val lat: Double,
-    val lng: Double,
-    val district: String,
-    val state: String,
-    val photoUrls: String, // JSON array serialized
-    val upvoteCount: Int,
-    val status: String, // SUBMITTED | VERIFIED | IN_PROGRESS | RESOLVED | REJECTED
-    val assignedDepartment: String?,
-    val isLocalDraft: Boolean = false,
-    val syncedAt: Long? = null,
-    val createdAt: Long,
-    val updatedAt: Long
-)
-
-/** Cached legal Q&A pairs (30-day TTL) */
-@Entity(
-    tableName = "legal_cache",
-    indices = [Index("queryHash")]
-)
-data class LegalCacheEntity(
-    @PrimaryKey val id: String,
-    val queryHash: String, // SHA-256 for deduplication
-    val queryText: String,
-    val responseText: String,
-    val citations: String, // JSON array
-    val confidence: Int, // 0-100
-    val expiresAt: Long
-)
-
-/** Political party organizational tree nodes */
+/** Legacy/Active: Political party organizational tree nodes mapping visual states */
 @Entity(
     tableName = "party_structure",
     indices = [Index("partyName"), Index("parentId")]
@@ -85,58 +21,145 @@ data class PartyNodeEntity(
     val versionDate: String // "2026-08-01"
 )
 
-/** Area-based elected leaders and officials */
-@Entity(
-    tableName = "leaders",
-    indices = [Index("constituency"), Index("role")]
+/** Domain A: Political Party catalog */
+@Entity(tableName = "parties")
+data class PartyEntity(
+    @PrimaryKey val id: String,
+    val officialName: String,
+    val shortName: String,
+    val symbol: String,
+    val color: String,
+    val foundedYear: Int,
+    val headquarters: String,
+    val status: String, // ACTIVE | INACTIVE
+    val metadata: String? // JSON metadata extension
 )
-data class LeaderEntity(
+
+/** Domain B: Political Organization Units (States, Districts, Mandals, Wards, Booths) */
+@Entity(
+    tableName = "political_organization_units",
+    indices = [Index("partyId"), Index("parentUnitId")]
+)
+data class PoliticalOrganizationUnitEntity(
+    @PrimaryKey val id: String,
+    val partyId: String,
+    val parentUnitId: String?,
+    val unitType: String, // NATIONAL | STATE | DISTRICT | CONSTITUENCY | MANDAL | WARD | BOOTH
+    val officialName: String,
+    val hierarchyLevel: Int,
+    val geographicScope: String,
+    val state: String?,
+    val district: String?,
+    val constituency: String?,
+    val blockTalukaMandal: String?,
+    val ward: String?,
+    val booth: String?,
+    val status: String // ACTIVE | INACTIVE
+)
+
+/** Domain C: Political Positions / Designations */
+@Entity(
+    tableName = "political_positions",
+    indices = [Index("partyId")]
+)
+data class PoliticalPositionEntity(
+    @PrimaryKey val id: String,
+    val partyId: String,
+    val organizationUnitType: String,
+    val positionName: String,
+    val officialTitle: String,
+    val hierarchyLevel: Int,
+    val positionType: String, // ELECTED | PARTY_ORGANIZATIONAL
+    val description: String?,
+    val sourceId: String?,
+    val verificationStatus: String // VERIFIED | PENDING | CONFLICTING
+)
+
+/** Domain D: Politician profiles */
+@Entity(tableName = "politicians")
+data class PoliticianEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val party: String,
-    val role: String, // MP | MLA | CORPORATOR | MAYOR | COMMISSIONER
-    val constituency: String,
-    val state: String,
-    val district: String,
-    val ward: String?,
-    val phone: String?,
-    val email: String?,
-    val photoUrl: String?,
-    val attendance: Float?, // percentage
-    val lastUpdated: String
+    val photo: String?,
+    val biography: String?,
+    val education: String?,
+    val status: String, // ACTIVE | INACTIVE | DECEASED
+    val metadata: String? // JSON metadata
 )
 
-/** Offline action queue for sync when connectivity returns */
+/** Domain E: Time-aware, versioned Position Assignments (Preserves historical roles) */
 @Entity(
-    tableName = "offline_queue",
-    indices = [Index("createdAt")]
+    tableName = "political_position_assignments",
+    indices = [
+        Index("partyId"),
+        Index("politicianId"),
+        Index("positionId"),
+        Index("organizationUnitId")
+    ]
 )
-data class OfflineActionEntity(
+data class PoliticalPositionAssignmentEntity(
     @PrimaryKey val id: String,
-    val actionType: String, // SUBMIT_GRIEVANCE | UPVOTE
-    val payload: String, // JSON of the request body
-    val retryCount: Int = 0,
-    val createdAt: Long,
-    val expiresAt: Long // 24-hour expiry
+    val partyId: String,
+    val politicianId: String,
+    val positionId: String,
+    val organizationUnitId: String,
+    val parentAssignmentId: String?,
+    val effectiveFrom: String,
+    val effectiveTo: String?,
+    val isActive: Boolean,
+    val verificationStatus: String // VERIFIED | PENDING | CONFLICTING
 )
 
-/** Election tracker data cache */
-@Entity(
-    tableName = "election_results",
-    indices = [Index("state"), Index("constituency")]
+/** Domain F: Ingestion Source Registry */
+@Entity(tableName = "source_registry")
+data class SourceRegistryEntity(
+    @PrimaryKey val sourceId: String,
+    val sourceName: String,
+    val url: String,
+    val sourceType: String, // GOVERNMENT | PARTY_WEBSITE | MEDIA
+    val authorityLevel: String, // LEVEL_1 | LEVEL_2 | LEVEL_3 | LEVEL_4
+    val lastChecked: String?,
+    val lastChanged: String?,
+    val contentHash: String?,
+    val status: String // ACTIVE | INACTIVE
 )
-data class ElectionResultEntity(
+
+/** Domain G: Layered Verification Records */
+@Entity(
+    tableName = "verification_records",
+    indices = [Index("sourceId")]
+)
+data class VerificationRecordEntity(
     @PrimaryKey val id: String,
-    val electionName: String, // "Lok Sabha 2024"
-    val state: String,
-    val constituency: String,
-    val candidateName: String,
-    val party: String,
-    val votes: Int,
-    val isLeading: Boolean,
-    val margin: Int,
-    val roundsCompleted: Int,
-    val totalRounds: Int,
-    val status: String, // COUNTING | DECLARED
-    val lastUpdated: Long
+    val recordId: String, // References assignment/politician/position ID
+    val sourceId: String,
+    val verificationStatus: String, // VERIFIED | PENDING | CONFLICTING | STALE | REJECTED | UNKNOWN
+    val verificationTimestamp: String,
+    val confidence: Float,
+    val reviewer: String?,
+    val conflictInfo: String?,
+    val notes: String?
+)
+
+/** Domain H: Reusable Geographic Nodes */
+@Entity(
+    tableName = "geography",
+    indices = [Index("parentId")]
+)
+data class GeographyEntity(
+    @PrimaryKey val id: String,
+    val parentId: String?,
+    val name: String,
+    val levelType: String // STATE | DISTRICT | CONSTITUENCY | WARD
+)
+
+/** Domain I: Local Sync Delta Tracker */
+@Entity(tableName = "sync_metadata")
+data class SyncMetadataEntity(
+    @PrimaryKey val id: String, // e.g., "sync_state"
+    val lastSyncTimestamp: String,
+    val schemaVersion: Int,
+    val dataVersion: Int,
+    val recordVersion: Int,
+    val updatedAt: String
 )

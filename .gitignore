@@ -36,5 +36,8 @@ desktop.ini
 *.swp
 *.swo
 
-# ---- Logs ----
+# ---- Logs & Python ----
 *.log
+__pycache__/
+*.py[cod]
+*$py.class

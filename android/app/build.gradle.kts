@@ -34,6 +34,10 @@ android {
             "\"${localProperties.getProperty("API_BASE_URL", "http://10.0.2.2:8000")}\"")
         buildConfigField("String", "MAPS_API_KEY",
             "\"${localProperties.getProperty("MAPS_API_KEY", "")}\"")
+        buildConfigField("String", "SUPABASE_URL",
+            "\"${localProperties.getProperty("SUPABASE_URL", "https://vfrjnsdqqcnmeugqlwti.supabase.co/rest/v1/")}\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY",
+            "\"${localProperties.getProperty("SUPABASE_PUBLISHABLE_KEY", "")}\"")
 
         // Inject Maps API key into AndroidManifest.xml
         manifestPlaceholders["MAPS_API_KEY"] =
@@ -120,6 +124,9 @@ dependencies {
     implementation(libs.play.services.maps)
     implementation(libs.play.services.location)
     implementation(libs.maps.compose)
+
+    // MapLibre Native Android
+    implementation(libs.maplibre.android)
 
     // Coil (Image Loading)
     implementation(libs.coil.compose)
