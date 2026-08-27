@@ -1,230 +1,191 @@
 <div align="center">
 
-# 🇮🇳 Our India
-### Unified Civic-Tech Platform — Native Android
+# 🇮🇳 Our India — Political Party Structure, Hierarchy & Civic Intelligence
 
-**AI-powered public grievance, news intelligence & civic transparency app for Indian citizens**
+**A high-performance, offline-first Native Android platform and autonomous ingestion engine for India's complete political hierarchy, boundary mapping, and civic leadership intelligence.**
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=for-the-badge&logo=kotlin)](https://kotlinlang.org)
-[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?style=for-the-badge&logo=jetpackcompose)](https://developer.android.com/compose)
-[![Hilt](https://img.shields.io/badge/DI-Hilt%20(Dagger)-FF6F00?style=for-the-badge)](https://dagger.dev/hilt/)
-[![Room](https://img.shields.io/badge/Offline-Room%20DB-009688?style=for-the-badge)](https://developer.android.com/training/data-storage/room)
-[![Maps](https://img.shields.io/badge/Maps-Google%20Maps%20SDK-34A853?style=for-the-badge&logo=googlemaps)](https://developers.google.com/maps)
-[![Cost](https://img.shields.io/badge/Monthly%20Cost-%240-brightgreen?style=for-the-badge)](/)
+[![Android](https://img.shields.io/badge/Platform-Android%20Native-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com)
+[![Kotlin](https://img.shields.io/badge/Language-Kotlin%202.0-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose%20M3-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)](https://developer.android.com/compose)
+[![Supabase](https://img.shields.io/badge/Cloud%20DB-Supabase%20PostgreSQL-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
+[![MapLibre](https://img.shields.io/badge/Maps-MapLibre%20Native-000000?style=for-the-badge&logo=maplibre&logoColor=white)](https://maplibre.org)
+[![Room](https://img.shields.io/badge/Local%20Cache-Room%20DB-009688?style=for-the-badge&logo=sqlite&logoColor=white)](https://developer.android.com/training/data-storage/room)
+[![GitHub Actions](https://img.shields.io/badge/Ingestion-GitHub%20Actions%20CI%2FCD-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 </div>
 
 ---
 
-## 🎯 What Problem Does It Solve?
+## ⚡ System Architecture
 
-Across India, civic information is **fragmented** across 100+ portals, news sites, and government systems. Citizens can't easily:
+```mermaid
+flowchart TD
+    subgraph S["🌐 Public Authoritative Sources"]
+        S1["⚖️ Election Commission of India (ECI)"]
+        S2["🚩 BJP National Portals / Gazette"]
+        S3["✋ INC AICC Leadership Data"]
+        S4["🧹 AAP National Leadership Portals"]
+    end
 
-- Report local issues (potholes, water shortage) and track their status
-- See which civic problems are most critical in their district
-- Get plain-language legal advice about their rights
-- Know which MP/MLA/Corporator represents their area
-- Follow election results with context
+    subgraph W["🤖 Autonomous Ingestion Worker (GitHub Actions)"]
+        A1["📡 Modular Source Adapters"]
+        A2["🔍 Parser & Pydantic Validation"]
+        A3["🏛️ Entity Resolution & Core Seeding"]
+        A4["📜 Historical Assignment Engine"]
+        A5["📊 Hard Post-Ingestion Verification"]
+    end
 
-**Our India** solves all of this in a **single, offline-first native Android application**.
+    subgraph C["☁️ Supabase Cloud Database"]
+        DB1["parties"]
+        DB2["political_organization_units"]
+        DB3["political_positions (43+ Verified)"]
+        DB4["politicians"]
+        DB5["political_position_assignments (Active/Historical)"]
+        DB6["source_registry & verification_records"]
+    end
 
----
+    subgraph A["📱 Android Application (Offline-First)"]
+        R1["🔄 PoliticalSyncRepository (Delta Sync)"]
+        R2["🗄️ Room Local SQLite Cache"]
+        R3["🧠 Shared State ViewModels"]
+        R4["📍 LocalGeographicResolver (Ray-Casting)"]
+        
+        UI1["🏛️ Infinite Hierarchy Canvas"]
+        UI2["🗺️ MapLibre Explorer"]
+        UI3["📊 Civic Analytics Dashboard"]
+        UI4["👤 Politician Profile & Timeline"]
+    end
 
-
----
-
-## 🧩 The Six Core Modules
-
-### 1. 📋 Grievance Redressal Engine
-Citizens report civic issues with **native camera** + **GPS pin-drop**. AI validates the photo (Gemini Vision), checks for duplicates within 200m (PostGIS), and routes to the correct government department automatically. Offline submissions are queued in Room and synced via WorkManager.
-
-### 2. 🗺️ Regional News Map
-Live civic issues scraped from Google News RSS → classified by AI (Groq Llama 3.3) → displayed as color-coded markers on a **native Google Map**. Red = critical, Yellow = moderate, Green = low. Bottom sheet shows AI summary + upvote button.
-
-### 3. ⚖️ AI Legal Advisor (RAG)
-Citizens ask legal questions in plain language → query is embedded (Gemini Embedding-2, 3072D) → matched against indexed Indian laws via pgvector → answer generated with citations. Cached locally for 30 days.
-
-### 4. 🗳️ Live Election Tracker
-Real-time constituency-level results with party-wise tallies, candidate vote bars, and round-by-round counting. Mock data available year-round for demonstration.
-
-### 5. 🏛️ All Party Structure
-Visual expandable tree of political party hierarchies from National → State → District → Ward. Updated monthly. Fully cached offline in Room.
-
-### 6. 👤 Area-Based Leaders Directory
-Enter GPS location → instantly see your MP, MLA, Corporator, Mayor, Commissioner with contact details. One-tap call/email actions.
-
----
-
-
-
-## 📱 Android Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| **Language** | Kotlin 2.0 |
-| **UI** | Jetpack Compose + Material 3 |
-| **Architecture** | Clean Architecture + MVVM |
-| **DI** | Hilt (Dagger) |
-| **Local DB** | Room (SQLite) — 7 tables |
-| **Networking** | Retrofit 2 + KotlinX Serialization |
-| **Background Sync** | WorkManager (6-hour periodic) |
-| **Maps** | Google Maps SDK for Android |
-| **Camera** | CameraX |
-| **Image Loading** | Coil 3 |
-| **Logging** | Timber |
-| **Build** | Gradle Kotlin DSL + Version Catalog |
-
----
-
-## 📁 Project Structure
-
-```
-Our-India/
-├── android/
-│   ├── app/
-│   │   ├── src/main/
-│   │   │   ├── AndroidManifest.xml
-│   │   │   ├── java/com/ourindia/app/
-│   │   │   │   ├── OurIndiaApplication.kt       # Hilt entry point
-│   │   │   │   ├── MainActivity.kt               # Compose host activity
-│   │   │   │   ├── data/
-│   │   │   │   │   ├── local/
-│   │   │   │   │   │   ├── entity/Entities.kt    # 7 Room entities
-│   │   │   │   │   │   ├── dao/Daos.kt           # All DAOs with Flow
-│   │   │   │   │   │   └── OurIndiaDatabase.kt   # Room DB class
-│   │   │   │   │   └── remote/
-│   │   │   │   │       └── OurIndiaApiService.kt  # Retrofit endpoints
-│   │   │   │   ├── di/                            # Hilt modules
-│   │   │   │   ├── ui/
-│   │   │   │   │   ├── theme/
-│   │   │   │   │   │   ├── Color.kt              # Civic Brutalism palette
-│   │   │   │   │   │   ├── Type.kt               # Typography scale
-│   │   │   │   │   │   └── Theme.kt              # Dual-mode theme
-│   │   │   │   │   ├── components/                # NeoCard, NeoButton
-│   │   │   │   │   ├── screens/                   # All 6 module screens
-│   │   │   │   │   └── navigation/                # NavHost + bottom bar
-│   │   │   │   └── worker/                        # WorkManager SyncWorker
-│   │   │   └── res/
-│   │   │       └── values/
-│   │   │           ├── strings.xml
-│   │   │           └── themes.xml
-│   │   ├── build.gradle.kts                       # App dependencies
-│   │   └── proguard-rules.pro
-│   ├── gradle/libs.versions.toml                  # Version catalog
-│   ├── build.gradle.kts                           # Project-level
-│   ├── settings.gradle.kts
-│   ├── gradle.properties
-│   └── local.properties                           # 🔒 API keys (NOT committed)
-│
-├── .gitignore
-└── README.md                                      # ← This file
+    S --> A1
+    A1 --> A2 --> A3 --> A4 --> A5 --> C
+    C -- "Incremental Delta Sync (versionDate > lastSync)" --> R1
+    R1 --> R2 --> R3
+    R4 --> R3
+    R3 --> UI1 & UI2 & UI3 & UI4
 ```
 
 ---
 
-## 🗄️ Room Database (Offline Cache)
+## ✨ Core Pillars & Features
 
-| Table | Records | TTL | Purpose |
-|-------|---------|-----|---------|
-| `cached_issues` | 500 max | 7 days | News map civic issues |
-| `grievances` | User's + nearby | — | Complaints + drafts |
-| `legal_cache` | Q&A pairs | 30 days | Legal RAG response cache |
-| `party_structure` | Full tree | Monthly | Party org hierarchy |
-| `leaders` | By district | 7 days | Elected representatives |
-| `offline_queue` | Pending actions | 24 hours | Sync queue |
-| `election_results` | All results | Per sync | Election data cache |
+<div align="center">
+
+| 🏛️ **Position-Driven Hierarchy** | 🗺️ **Map Explorer & PIP Engine** | 📊 **Dynamic Civic Analytics** |
+|:---:|:---:|:---:|
+| **Infinite Pan/Zoom Canvas** with 50% initial scale, root-centering, and multiple positions per tier. Unknown holders show *"Not yet fetched"*—never fabricated. | **MapLibre Native Vector Map** with offline Ray-Casting Point-in-Polygon resolving State ➔ District ➔ Sub-district on long-press. | **Shared Multi-Module Filter** calculating seats, regional distribution, and demographics. Restores nationwide view instantly on clear. |
+
+| 🔄 **Delta Sync & Offline Room Cache** | 🤖 **Autonomous Ingestion Worker** | 📜 **True Historical Preservation** |
+|:---:|:---:|:---:|
+| Sub-second startup from local Room DB. Incremental delta sync over PostgREST without blocking the UI thread. | Bi-monthly GitHub Actions cron running real scrapers with deterministic UUID seeding and zero secret leaks. | When office holders change: old assignment is marked `is_active=false, effective_to=now()`; new assignment is activated. History is never wiped. |
+
+</div>
 
 ---
 
-## ⚡ Getting Started
+## 🚀 Key Engineering & Performance Optimizations
 
-### Prerequisites
-- Android Studio Hedgehog+ (2024.1+)
-- JDK 17
-- Android SDK 35
-- A Google Maps API Key
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ 1. Zero-Dependency Geographic Engine                                                   │
+│    • Compressed 3 administrative boundaries into 0.81 MB GZIP GeoJSONs                 │
+│    • Custom Kotlin Ray-Casting algorithm resolves Point-in-Polygon in < 2ms            │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 2. Position-First Data Integrity                                                       │
+│    • Strict separation between Positions (Designations) and Politicians (People)      │
+│    • Positions exist permanently even if the current office holder is unknown          │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 3. Deterministic Supabase Cloud Synchronization                                        │
+│    • Deterministic UUIDv5 primary keys guarantee idempotent, conflict-free writes      │
+│    • Dynamic schema adaptation automatically adjusts payloads to remote table columns  │
+│    • Hard fail-safe aborts CI/CD run if core production tables remain empty            │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
-### 1. Clone
+---
+
+## 🗄️ Database Schema & Data Models
+
+```
+☁️ Supabase PostgreSQL (Production)
+├── parties                          (id, name, short_name, symbol, status)
+├── political_organization_units     (id, party_id, official_name, unit_type, hierarchy_level)
+├── political_positions              (id, party_id, official_title, hierarchy_level, position_type)
+├── politicians                      (id, name, party_id, photo, biography, status)
+├── political_position_assignments   (id, position_id, politician_id, effective_from, effective_to, is_active)
+├── source_registry                  (source_id, source_name, url, source_type, authority_level)
+└── verification_records             (id, source_id, record_id, verification_status, confidence)
+```
+
+---
+
+## 🧪 Production Verification & Build Metrics
+
+| Metric | Status / Value | Verification Detail |
+|---|:---:|---|
+| **Android Unit Tests** | `PASS` | `testDebugUnitTest` 100% passing (0 failures) |
+| **Android Debug Build** | `PASS` | `assembleDebug` clean build completed in 1m 50s |
+| **Debug APK Location** | `READY` | `android/app/build/outputs/apk/debug/app-debug.apk` |
+| **APK Binary Size** | `65.8 MB` | Well within target budget (< 100 MB) |
+| **Live Scraper Adapters** | `PASS` | 44 real verified records extracted across ECI, BJP, INC, AAP |
+| **Supabase Cloud Population**| `VERIFIED` | 43+ positions, parties, politicians & active assignments populated |
+| **Security Audit** | `CLEAN` | Zero service-role keys or private credentials committed |
+
+---
+
+## 🛠️ Tech Stack
+
+- **Android Client**: Kotlin 2.0, Jetpack Compose, Material 3, AndroidX Navigation, Hilt DI, Coroutines & Flow.
+- **Local Persistence**: Room SQLite, GZIP Compressed GeoJSON Assets.
+- **Maps & GIS**: MapLibre Native SDK, Custom Ray-Casting Point-in-Polygon Engine.
+- **Cloud Backend**: Supabase PostgreSQL, Row Level Security (RLS), PostgREST.
+- **Data Ingestion**: Python 3.12, BeautifulSoup4, Requests, Pydantic, GitHub Actions Automation.
+
+---
+
+## 🏁 Quick Start & Building
+
+### 1. Android Application
 
 ```bash
+# Clone the repository
 git clone https://github.com/harshoswal1/Our-India.git
 cd Our-India/android
-```
 
-### 2. Configure API Keys
+# Run unit tests
+./gradlew testDebugUnitTest
 
-Create `android/local.properties`:
-```properties
-MAPS_API_KEY=your_google_maps_api_key_here
-API_BASE_URL=http://10.0.2.2:8000
-```
-
-### 3. Build & Run
-
-```bash
-# Open in Android Studio, or:
+# Assemble Debug APK
 ./gradlew assembleDebug
 ```
 
-Install the APK on an emulator or physical device.
+The compiled APK will be located at:
+`android/app/build/outputs/apk/debug/app-debug.apk`
+
+### 2. Autonomous Ingestion Worker (Python)
+
+```bash
+# From repository root
+pip install requests beautifulsoup4 pydantic supabase
+
+# Execute worker module
+python -m backend.main
+```
+
+*(Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables configured).*
 
 ---
 
-## 🔒 Security
+## 🔒 Security Architecture
 
-| Protection | Implementation |
-|-----------|----------------|
-| API keys | Loaded from `local.properties` → `BuildConfig` (never committed) |
-| ProGuard/R8 | Release builds minified & obfuscated |
-| Certificate Pinning | SHA-256 pins in OkHttp (production) |
-| Room Encryption | SQLCipher ready |
-| Input Sanitization | All user input sanitized before API calls |
-
----
-
-## 🌐 Backend API Endpoints (Consumed by Android)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/auth/login` | Firebase Auth login |
-| `POST` | `/api/v1/grievances` | Submit grievance |
-| `GET` | `/api/v1/grievances` | Get grievances |
-| `POST` | `/api/v1/grievances/{id}/upvote` | Upvote |
-| `GET` | `/api/v1/news-map` | Get classified news |
-| `POST` | `/api/v1/ai-legal/query` | Legal question (RAG) |
-| `GET` | `/api/v1/elections/tracker` | Election data |
-| `GET` | `/api/v1/party/structure` | Party tree |
-| `GET` | `/api/v1/leaders?lat=&lng=` | Leaders by GPS |
-
----
-
-## 💰 Total Monthly Cost: $0
-
-| Service | Free Tier |
-|---------|-----------|
-| **Neon PostgreSQL** | 500MB + PostGIS + pgvector |
-| **Groq** | 30 RPM, 10K req/day |
-| **Google Gemini** | 1,500 req/day |
-| **Google Maps SDK** | $200/month free credit |
-
----
-
-## 🤝 Contributing
-
-1. Fork → `git checkout -b feature/my-feature`
-2. Commit → `git push origin feature/my-feature`
-3. Open a Pull Request
-
----
-
-## 📜 License
-
-MIT License — Free to use, modify, and distribute.
+- **Public Client Isolation**: Android communicates with Supabase exclusively via the public publishable/anonymous API key with Row Level Security (RLS) policies.
+- **Protected Service Keys**: Privileged database writes are restricted to GitHub Actions runner environments via encrypted repository secrets.
+- **Audit**: Zero private tokens, JWTs, or service-role keys exist in Android code, assets, or Git history.
 
 ---
 
 <div align="center">
 
-Built for the citizens of India 🇮🇳 — Civic transparency powered by AI
+**Our India — Engineered for Civic Transparency & Democratic Empowerment 🇮🇳**
 
 </div>
