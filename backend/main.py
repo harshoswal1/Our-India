@@ -125,6 +125,17 @@ def main():
             logger.error("\n❌ CRITICAL ERROR: Ingestion failed to populate remote database!")
             sys.exit(1)
             
+        # Sample records for proof of write
+        try:
+            sample_pol = db_client.supabase.table("politicians").select("name").limit(3).execute()
+            sample_pos = db_client.supabase.table("political_positions").select("official_title").limit(3).execute()
+            if sample_pol.data:
+                logger.info(f"   Sample Politicians: {[r['name'] for r in sample_pol.data]}")
+            if sample_pos.data:
+                logger.info(f"   Sample Positions  : {[r['official_title'] for r in sample_pos.data]}")
+        except Exception:
+            pass
+
         logger.info("\n🎉 SUCCESS: Remote Supabase database verified with live production records!")
         
     except Exception as e:
