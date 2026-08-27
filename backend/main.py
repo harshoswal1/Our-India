@@ -15,16 +15,16 @@ logger = logging.getLogger("autonomous_ingestion_worker")
 
 def main():
     logger.info("==================================================================")
-    logger.info("🚀 STARTING OUR INDIA AUTONOMOUS POLITICAL INGESTION WORKER")
+    logger.info("🚀 OUR INDIA AUTONOMOUS POLITICAL INGESTION WORKER")
     logger.info("==================================================================")
 
     # 1. Initialize Supabase Client & Seed Core Entities
     try:
         db_client = DatabaseClient()
-        logger.info("✅ Connected to Supabase and verified core parties and organization units.")
+        logger.info("✅ Connected to Supabase and verified core parties & organization units.")
     except Exception as e:
         logger.error(f"❌ Failed to initialize database client: {str(e)}")
-        logger.error("Please verify that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are correctly configured in GitHub Actions secrets.")
+        logger.error(traceback.format_exc())
         sys.exit(1)
 
     # 2. Registered Source Adapters
@@ -53,7 +53,7 @@ def main():
             total_records_fetched += count
             
             if count == 0:
-                logger.error(f"❌ Adapter '{source_label}' extracted 0 records! Check scraper selector/regex.")
+                logger.error(f"❌ Adapter '{source_label}' extracted 0 records!")
                 total_warnings_failures += 1
                 continue
 
@@ -74,7 +74,8 @@ def main():
                         total_hist_preserved += 1
                 except Exception as ex:
                     total_warnings_failures += 1
-                    logger.warning(f"   [Warning] Skipped assignment '{assignment.position_ref.official_title}': {ex}")
+                    logger.error(f"   ❌ Failed assignment for '{assignment.position_ref.official_title}': {ex}")
+                    logger.error(traceback.format_exc())
 
             total_positions_upserted += pos_count
             total_politicians_upserted += pol_count
@@ -84,11 +85,10 @@ def main():
 
         except Exception as e:
             total_warnings_failures += 1
-            # Source Safety Rule: Failure of one source adapter will NOT delete or corrupt other data
-            logger.error(f"   ❌ Adapter '{source_label}' failed: {str(e)}")
+            logger.error(f"   ❌ Adapter '{source_label}' execution failed: {str(e)}")
             logger.error(traceback.format_exc())
 
-    # 3. Final Production Verification of Supabase Tables
+    # 3. Final Production Database Verification
     logger.info("\n==================================================================")
     logger.info("🔍 EXECUTING FINAL DATABASE VERIFICATION IN SUPABASE")
     logger.info("==================================================================")
@@ -98,26 +98,38 @@ def main():
         for tbl, cnt in final_counts.items():
             logger.info(f"   public.{tbl:<32}: {cnt} records")
             
+        parties_cnt = final_counts.get("parties", 0)
+        org_cnt = final_counts.get("political_organization_units", 0)
         pos_cnt = final_counts.get("political_positions", 0)
         pol_cnt = final_counts.get("politicians", 0)
         assign_cnt = final_counts.get("political_position_assignments", 0)
         
-        if pos_cnt == 0:
-            logger.error("\n❌ CRITICAL ERROR: political_positions table is still 0! Ingestion failed to populate database.")
+        has_error = False
+        if parties_cnt <= 0:
+            logger.error("❌ CRITICAL: 'parties' table has 0 records!")
+            has_error = True
+        if org_cnt <= 0:
+            logger.error("❌ CRITICAL: 'political_organization_units' table has 0 records!")
+            has_error = True
+        if pos_cnt <= 0:
+            logger.error("❌ CRITICAL: 'political_positions' table has 0 records!")
+            has_error = True
+        if pol_cnt <= 0:
+            logger.error("❌ CRITICAL: 'politicians' table has 0 records!")
+            has_error = True
+        if assign_cnt <= 0:
+            logger.error("❌ CRITICAL: 'political_position_assignments' table has 0 records!")
+            has_error = True
+            
+        if has_error:
+            logger.error("\n❌ CRITICAL ERROR: Ingestion failed to populate remote database!")
             sys.exit(1)
             
-        if pol_cnt == 0:
-            logger.error("\n❌ CRITICAL ERROR: politicians table is still 0! Ingestion failed to populate database.")
-            sys.exit(1)
-            
-        if assign_cnt == 0:
-            logger.error("\n❌ CRITICAL ERROR: political_position_assignments table is still 0! Ingestion failed to populate database.")
-            sys.exit(1)
-            
-        logger.info("\n🎉 SUCCESS: All Supabase production tables verified with non-zero verified records!")
+        logger.info("\n🎉 SUCCESS: Remote Supabase database verified with live production records!")
         
     except Exception as e:
-        logger.error(f"❌ Failed to verify final database counts: {e}")
+        logger.error(f"❌ Failed to verify database counts: {e}")
+        logger.error(traceback.format_exc())
         sys.exit(1)
 
     # 4. Final Summary Report
@@ -129,9 +141,9 @@ def main():
     logger.info(f"Positions Upserted to Supabase  : {total_positions_upserted}")
     logger.info(f"Politicians Upserted            : {total_politicians_upserted}")
     logger.info(f"Historical Assignments Preserved: {total_hist_preserved}")
-    logger.info(f"Warnings / Isolated Failures    : {total_warnings_failures}")
+    logger.info(f"Warnings / Failures             : {total_warnings_failures}")
     logger.info("==================================================================")
-    logger.info("✅ Pipeline successfully completed with 100% verified production records.")
+    logger.info("✅ Ingestion cycle finished.")
 
 if __name__ == "__main__":
     main()
