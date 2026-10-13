@@ -2,18 +2,18 @@ package com.ourindia.app.ui.partystructure
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PieChart
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.outlined.DonutLarge
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,10 +22,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ourindia.app.ui.theme.CivicColors
+import kotlin.math.roundToInt
+
+private data class TierSlice(val label: String, val count: Int, val color: Color)
 
 @Composable
 fun PartyAnalyticsDashboard(
@@ -36,421 +38,245 @@ fun PartyAnalyticsDashboard(
     onClearLocationFilter: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Filter nodes for regional analytics if a state is selected
-    val filteredNodes = if (selectedState != null) {
-        allNodes.filter { it.state.equals(selectedState, ignoreCase = true) }
-    } else {
-        allNodes
+    val nodes = remember(allNodes, selectedState) {
+        if (selectedState == null) allNodes else allNodes.filter { it.state.equals(selectedState, ignoreCase = true) }
     }
-
-    val totalNodes = filteredNodes.size.coerceAtLeast(1)
-
-    // Level breakdown — dynamically grouped by tier ranges, not hardcoded enum values
-    val nationalCount = filteredNodes.count { it.level.tier <= 8 }          // National tier (1-8)
-    val stateCount    = filteredNodes.count { it.level.tier in 9..15 }      // State tier (9-15)
-    val districtCount = filteredNodes.count { it.level.tier in 16..22 }     // District/Taluka tier (16-22)
-    val wardCount     = filteredNodes.count { it.level.tier >= 23 }         // Ward/Booth tier (23+)
+    val named = nodes.count { !it.isNotFetched }
+    val slices = remember(nodes) {
+        listOf(
+            TierSlice("National", nodes.count { it.level.tier <= 8 }, HierarchyLevel.NATIONAL.badgeColor),
+            TierSlice("State", nodes.count { it.level.tier in 9..15 }, HierarchyLevel.STATE.badgeColor),
+            TierSlice("District", nodes.count { it.level.tier in 16..19 }, HierarchyLevel.DISTRICT.badgeColor),
+            TierSlice("Mandal & constituency", nodes.count { it.level.tier in 20..22 }, HierarchyLevel.TALUKA_MANDAL.badgeColor),
+            TierSlice("Ward & booth", nodes.count { it.level.tier >= 23 }, HierarchyLevel.WARD.badgeColor)
+        )
+    }
+    var showAllStates by remember(partyMetadata.shortName) { mutableStateOf(false) }
 
     LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(CivicColors.Background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 0. Active Scope Indicator
         item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.5.dp, CivicColors.Navy, RoundedCornerShape(10.dp)),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (selectedState != null) Color(0xFFFFF8E7) else Color.White
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (selectedState != null) "Regional Representation Insights" else "Nationwide Insights",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = CivicColors.Navy
-                        )
-                        Text(
-                            text = if (selectedState != null) "Filtered by region: $selectedState" else "Showing statistics across all states",
-                            fontSize = 11.5.sp,
-                            color = CivicColors.TextSecondary
-                        )
-                    }
-                    if (selectedState != null && onClearLocationFilter != null) {
-                        TextButton(onClick = onClearLocationFilter) {
-                            Text(
-                                text = "Show Nationwide",
-                                color = CivicColors.Saffron,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        // 1. Key Summary Stats Grid
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.5.dp, CivicColors.Navy, RoundedCornerShape(10.dp)),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(10.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Analytics,
-                            contentDescription = null,
-                            tint = CivicColors.Navy,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "${partyMetadata.name} Overview",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = CivicColors.Navy
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        StatMetricBox(
-                            value = "$totalNodes",
-                            label = "Organizational Units",
-                            color = partyMetadata.color,
-                            modifier = Modifier.weight(1f)
-                        )
-                        StatMetricBox(
-                            value = "${partyMetadata.nationalSeats}",
-                            label = "Lok Sabha Seats",
-                            color = CivicColors.Saffron,
-                            modifier = Modifier.weight(1f)
-                        )
-                        StatMetricBox(
-                            value = "${stateGeoDataList.size}",
-                            label = "Active States",
-                            color = CivicColors.Teal,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-        }
-
-        // 2. Hierarchy Level Distribution (Custom Donut Chart & Breakdown)
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.5.dp, CivicColors.Navy, RoundedCornerShape(10.dp)),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(10.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PieChart,
-                            contentDescription = null,
-                            tint = CivicColors.Navy,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "Level-wise Hierarchy Distribution",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = CivicColors.Navy
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Custom Canvas Donut Chart
-                        Box(
-                            modifier = Modifier.size(110.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            DonutChart(
-                                nationalCount = nationalCount,
-                                stateCount = stateCount,
-                                districtCount = districtCount,
-                                wardCount = wardCount,
-                                total = totalNodes
-                            )
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "$totalNodes",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = CivicColors.Navy
-                                )
-                                Text(
-                                    text = "Nodes",
-                                    fontSize = 9.sp,
-                                    color = CivicColors.TextSecondary
-                                )
-                            }
-                        }
-
-                        // Legend Breakdown List
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            LevelLegendRow("National", nationalCount, totalNodes, CivicColors.Saffron)
-                            LevelLegendRow("State", stateCount, totalNodes, CivicColors.Navy)
-                            LevelLegendRow("District", districtCount, totalNodes, CivicColors.Teal)
-                            LevelLegendRow("Ward/Local", wardCount, totalNodes, CivicColors.CivicRed)
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. State-wise Representation Comparison Bar Chart
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.5.dp, CivicColors.Navy, RoundedCornerShape(10.dp)),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(10.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.TrendingUp,
-                            contentDescription = null,
-                            tint = CivicColors.Navy,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "State-wise Representation Intensity",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = CivicColors.Navy
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    stateGeoDataList.take(6).forEach { state ->
-                        StateBarRow(
-                            stateName = state.stateName,
-                            count = state.leaderCount,
-                            maxCount = stateGeoDataList.maxOfOrNull { it.leaderCount }?.coerceAtLeast(1) ?: 1,
-                            partyColor = partyMetadata.color
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                }
-            }
-        }
-
-        // 4. Data Transparency / Methodology Note
-        item {
-            Surface(
-                color = CivicColors.Navy.copy(alpha = 0.06f),
-                shape = RoundedCornerShape(8.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, CivicColors.Navy.copy(alpha = 0.15f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = CivicColors.Navy,
-                        modifier = Modifier.size(16.dp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = selectedState ?: "All India",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = CivicColors.Navy
                     )
                     Text(
-                        text = "Data represents verified public organizational records and party leadership appointments compiled from party constitutions, public bulletins, and election registries.",
-                        fontSize = 11.sp,
-                        color = CivicColors.OnSurface,
-                        lineHeight = 15.sp
+                        text = if (selectedState != null) "${partyMetadata.shortName} organisation in this state"
+                        else "${partyMetadata.name} across the country",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CivicColors.TextSecondary
                     )
+                }
+                if (selectedState != null && onClearLocationFilter != null) {
+                    TextButton(onClick = onClearLocationFilter) { Text("All India", color = CivicColors.SaffronDeep) }
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun StatMetricBox(
-    value: String,
-    label: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier.padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = value,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = color
-        )
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            color = CivicColors.TextSecondary,
-            lineHeight = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-@Composable
-private fun DonutChart(
-    nationalCount: Int,
-    stateCount: Int,
-    districtCount: Int,
-    wardCount: Int,
-    total: Int
-) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val strokeWidth = 14.dp.toPx()
-        val radius = (size.minDimension - strokeWidth) / 2f
-        val center = Offset(size.width / 2f, size.height / 2f)
-
-        var startAngle = -90f
-        val counts = listOf(
-            nationalCount to CivicColors.Saffron,
-            stateCount to CivicColors.Navy,
-            districtCount to CivicColors.Teal,
-            wardCount to CivicColors.CivicRed
-        )
-
-        counts.forEach { (count, color) ->
-            val sweep = (count.toFloat() / total) * 360f
-            if (sweep > 0f) {
-                drawArc(
-                    color = color,
-                    startAngle = startAngle,
-                    sweepAngle = sweep - 2f, // subtle gap
-                    useCenter = false,
-                    topLeft = Offset(center.x - radius, center.y - radius),
-                    size = Size(radius * 2, radius * 2),
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        if (nodes.isEmpty()) {
+            item {
+                EmptyState(
+                    icon = Icons.Outlined.Insights,
+                    title = "Nothing to measure yet",
+                    message = if (selectedState != null) "No ${partyMetadata.shortName} posts are recorded in $selectedState."
+                    else "${partyMetadata.name}'s structure hasn't been ingested yet."
                 )
-                startAngle += sweep
+            }
+            return@LazyColumn
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatTile("Posts mapped", "${nodes.size}", Modifier.weight(1f))
+                    StatTile("Named holders", "$named", Modifier.weight(1f), caption = "of ${nodes.size}")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (selectedState == null) {
+                        StatTile("States organised", "${stateGeoDataList.size}", Modifier.weight(1f))
+                    } else {
+                        StatTile(
+                            "Districts organised",
+                            "${stateGeoDataList.firstOrNull { it.stateName.equals(selectedState, true) }?.districts?.size ?: 0}",
+                            Modifier.weight(1f)
+                        )
+                    }
+                    // Seats are a national figure; labelled so a state filter doesn't make it read as local.
+                    StatTile("Lok Sabha MPs", "${partyMetadata.nationalSeats}", Modifier.weight(1f), caption = "nationwide")
+                }
+            }
+        }
+
+        item {
+            SectionCard(title = "Record completeness", icon = Icons.Outlined.TaskAlt) {
+                val fraction = named.toFloat() / nodes.size
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("${(fraction * 100).roundToInt()}%", style = MaterialTheme.typography.headlineMedium, color = CivicColors.TealDeep)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "of posts have a named holder",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CivicColors.TextSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(CircleShape),
+                    color = CivicColors.Teal,
+                    trackColor = CivicColors.SurfaceVariant,
+                    drawStopIndicator = {}
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Posts without a holder exist in the party constitution but their occupant hasn't been ingested yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CivicColors.TextMuted
+                )
+            }
+        }
+
+        item {
+            SectionCard(title = "Posts by tier", icon = Icons.Outlined.DonutLarge) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Box(Modifier.size(120.dp), contentAlignment = Alignment.Center) {
+                        DonutChart(slices = slices, total = nodes.size)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${nodes.size}", style = MaterialTheme.typography.titleLarge, color = CivicColors.Navy)
+                            Text("posts", style = MaterialTheme.typography.labelSmall, color = CivicColors.TextMuted)
+                        }
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        slices.forEach { LegendRow(it, nodes.size) }
+                    }
+                }
+            }
+        }
+
+        if (selectedState == null && stateGeoDataList.isNotEmpty()) {
+            item {
+                SectionCard(
+                    title = "Where it's organised",
+                    icon = Icons.Outlined.Place,
+                    trailing = {
+                        if (stateGeoDataList.size > 6) {
+                            TextButton(onClick = { showAllStates = !showAllStates }) {
+                                Text(if (showAllStates) "Top 6" else "All ${stateGeoDataList.size}", color = CivicColors.SaffronDeep)
+                            }
+                        }
+                    }
+                ) {
+                    val max = stateGeoDataList.maxOf { it.leaderCount }.coerceAtLeast(1)
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        (if (showAllStates) stateGeoDataList else stateGeoDataList.take(6)).forEach { st ->
+                            StateBar(st.stateName, st.leaderCount, max, partyMetadata.color)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CivicColors.SurfaceVariant, RoundedCornerShape(14.dp))
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(Icons.Outlined.Info, contentDescription = null, tint = CivicColors.TextSecondary, modifier = Modifier.size(18.dp))
+                Text(
+                    "Counts reflect positions recorded on this device from party constitutions, public bulletins and election registries. Seat totals come from the party catalogue.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CivicColors.TextSecondary
+                )
             }
         }
     }
 }
 
 @Composable
-private fun LevelLegendRow(
-    label: String,
-    count: Int,
-    total: Int,
-    color: Color
-) {
-    val percentage = ((count.toFloat() / total) * 100).toInt()
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+private fun StatTile(label: String, value: String, modifier: Modifier = Modifier, caption: String? = null) {
+    Column(
+        modifier = modifier
+            .background(CivicColors.Surface, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(color, CircleShape)
-            )
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = CivicColors.OnSurface
-            )
+        Text(label, style = MaterialTheme.typography.labelMedium, color = CivicColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, style = MaterialTheme.typography.headlineSmall, color = CivicColors.Navy)
+            if (caption != null) {
+                Spacer(Modifier.width(6.dp))
+                Text(caption, style = MaterialTheme.typography.bodySmall, color = CivicColors.TextMuted, modifier = Modifier.padding(bottom = 3.dp))
+            }
         }
+    }
+}
 
+@Composable
+private fun DonutChart(slices: List<TierSlice>, total: Int) {
+    Canvas(Modifier.fillMaxSize()) {
+        val stroke = 16.dp.toPx()
+        val radius = (size.minDimension - stroke) / 2f
+        val topLeft = Offset(center.x - radius, center.y - radius)
+        val arcSize = Size(radius * 2, radius * 2)
+        drawArc(CivicColors.SurfaceVariant, 0f, 360f, false, topLeft, arcSize, style = Stroke(stroke))
+        // Butt caps with a fixed gap: the old round caps overran each slice by half the
+        // stroke, so small slices rendered as overlapping dots.
+        val present = slices.filter { it.count > 0 }
+        val gap = if (present.size > 1) 2.5f else 0f
+        var start = -90f
+        present.forEach { slice ->
+            val sweep = slice.count.toFloat() / total * 360f
+            drawArc(slice.color, start + gap / 2, (sweep - gap).coerceAtLeast(0.5f), false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Butt))
+            start += sweep
+        }
+    }
+}
+
+@Composable
+private fun LegendRow(slice: TierSlice, total: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.size(10.dp).background(slice.color, CircleShape))
+        Text(slice.label, style = MaterialTheme.typography.bodySmall, color = CivicColors.OnSurface, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
-            text = "$count ($percentage%)",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
+            "${slice.count} · ${(slice.count * 100f / total).roundToInt()}%",
+            style = MaterialTheme.typography.labelMedium,
             color = CivicColors.Navy
         )
     }
 }
 
 @Composable
-private fun StateBarRow(
-    stateName: String,
-    count: Int,
-    maxCount: Int,
-    partyColor: Color
-) {
-    val fraction = (count.toFloat() / maxCount).coerceIn(0.05f, 1f)
-
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = stateName,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = CivicColors.Navy
-            )
-            Text(
-                text = "$count Leaders",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = CivicColors.TextSecondary
-            )
+private fun StateBar(name: String, count: Int, max: Int, color: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(name, style = MaterialTheme.typography.bodyMedium, color = CivicColors.Navy, modifier = Modifier.weight(1f))
+            Text("$count posts", style = MaterialTheme.typography.labelMedium, color = CivicColors.TextSecondary)
         }
-
-        LinearProgressIndicator(
-            progress = { fraction },
-            modifier = Modifier
+        Box(
+            Modifier
                 .fillMaxWidth()
                 .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            color = partyColor,
-            trackColor = CivicColors.Navy.copy(alpha = 0.08f)
-        )
+                .background(CivicColors.SurfaceVariant, CircleShape)
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(count.toFloat() / max)
+                    .fillMaxHeight()
+                    .background(color, CircleShape)
+            )
+        }
     }
 }

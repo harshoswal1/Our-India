@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.OurIndia" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.OurIndia" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Matches CivicColors.Background so launch doesn't flash white before Compose draws. -->
+        <item name="android:windowBackground">#F7F5F0</item>
+    </style>
 </resources>

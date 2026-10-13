@@ -3,6 +3,7 @@ package com.ourindia.app.data.geo
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.MultiPolygon
 import org.maplibre.geojson.Point
@@ -16,7 +17,10 @@ data class ResolvedLocation(
     val state: String?,
     val district: String? = null,
     val city: String? = null,
-    val taluka: String? = null
+    val taluka: String? = null,
+    // The point that was resolved, so the map can pin it instead of a state's centre.
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 /** Abstraction for resolving geographical coordinates to structured location info */
@@ -35,21 +39,51 @@ interface GeographicResolver {
 class LocalGeographicResolver(private val context: Context) : GeographicResolver {
 
     // Lazy initialization saves memory by only loading boundary files into memory
-    // exactly when they are required for resolution.
-    private val stateFeatures by lazy { loadFeatures("geo/states.geojson.gz") }
-    private val districtFeatures by lazy { loadFeatures("geo/districts.geojson.gz") }
+    // exactly when they are required for resolution. The map reuses the same parse.
+    val stateFeatures by lazy { loadFeatures(STATES_ASSET) }
+    val districtFeatures by lazy { loadFeatures(DISTRICTS_ASSET) }
     private val subDistrictFeatures by lazy { loadFeatures("geo/sub_districts.geojson.gz") }
 
-    private fun loadFeatures(assetPath: String): FeatureCollection? {
-        return try {
-            val jsonString = context.assets.open(assetPath).use { input ->
-                GZIPInputStream(input).bufferedReader().use { it.readText() }
-            }
-            FeatureCollection.fromJson(jsonString)
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to load/decompress bundled GeoJSON: $assetPath")
-            null
+    /** Raw GeoJSON text of a bundled boundary file; call off the main thread. */
+    fun readGeoJson(assetPath: String): String? = try {
+        context.assets.open(assetPath).use { input ->
+            GZIPInputStream(input).bufferedReader().use { it.readText() }
         }
+    } catch (e: Exception) {
+        Timber.e(e, "Failed to load/decompress bundled GeoJSON: $assetPath")
+        null
+    }
+
+    private fun loadFeatures(assetPath: String): FeatureCollection? =
+        readGeoJson(assetPath)?.let { FeatureCollection.fromJson(it) }
+
+    /**
+     * Bounding box of a state, or of a district inside it. Null when the name is not in
+     * the boundary files (seed data says "Bengaluru", the file says "Bangalore").
+     * The district file stores state names upper-cased, hence the case-blind compares.
+     */
+    suspend fun boundsOf(state: String, district: String? = null): LatLngBounds? = withContext(Dispatchers.Default) {
+        val feature = if (district == null) {
+            stateFeatures?.features()?.firstOrNull { it.getStringProperty("state").equals(state, ignoreCase = true) }
+        } else {
+            districtFeatures?.features()?.firstOrNull {
+                it.getStringProperty("state").equals(state, ignoreCase = true) &&
+                    it.getStringProperty("district").equals(district, ignoreCase = true)
+            }
+        }
+        val rings = when (val g = feature?.geometry()) {
+            is Polygon -> g.coordinates()
+            is MultiPolygon -> g.coordinates().flatten()
+            else -> return@withContext null
+        }
+        var north = -90.0; var south = 90.0; var east = -180.0; var west = 180.0
+        rings.forEach { ring ->
+            ring.forEach { p ->
+                north = maxOf(north, p.latitude()); south = minOf(south, p.latitude())
+                east = maxOf(east, p.longitude()); west = minOf(west, p.longitude())
+            }
+        }
+        if (north < south) null else LatLngBounds.from(north, east, south, west)
     }
 
     override suspend fun resolveLocation(latitude: Double, longitude: Double): ResolvedLocation? = withContext(Dispatchers.Default) {
@@ -109,8 +143,15 @@ class LocalGeographicResolver(private val context: Context) : GeographicResolver
             country = "India",
             state = stateName,
             district = districtName,
-            taluka = subDistrictName
+            taluka = subDistrictName,
+            latitude = latitude,
+            longitude = longitude
         )
+    }
+
+    companion object {
+        const val STATES_ASSET = "geo/states.geojson.gz"
+        const val DISTRICTS_ASSET = "geo/districts.geojson.gz"
     }
 
     // ── Point-In-Polygon (Ray-Casting Algorithm) ──────────────────────────

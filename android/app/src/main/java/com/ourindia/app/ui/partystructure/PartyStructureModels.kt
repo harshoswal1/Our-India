@@ -1,6 +1,11 @@
 package com.ourindia.app.ui.partystructure
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountTree
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.ourindia.app.data.geo.ResolvedLocation
 import com.ourindia.app.ui.theme.CivicColors
 
@@ -12,10 +17,10 @@ enum class FeatureScreen {
 }
 
 /** Switchable Sub-Modules within the Political Workspace */
-enum class WorkspaceSubModule(val title: String, val subtitle: String, val iconEmoji: String) {
-    HIERARCHY("Hierarchy", "Virtual Canvas Tree", "🌲"),
-    MAP("Map Explorer", "Geographic Drill-Down", "🗺️"),
-    ANALYTICS("Analytics", "Representation & Stats", "📊")
+enum class WorkspaceSubModule(val title: String, val icon: ImageVector) {
+    HIERARCHY("Structure", Icons.Outlined.AccountTree),
+    MAP("Map", Icons.Outlined.Map),
+    ANALYTICS("Insights", Icons.Outlined.Insights)
 }
 
 /**
@@ -47,14 +52,14 @@ enum class HierarchyLevel(val label: String, val badgeColor: Color, val tier: In
     DISTRICT_GS("District General Secretary", CivicColors.Teal, 18, "District"),
     DISTRICT_SECRETARY("District Secretary", CivicColors.Teal, 19, "District"),
     // ── Sub-district / Mandal / Block / Taluka Tier ──────────────────
-    CONSTITUENCY("Constituency/Assembly Incharge", Color(0xFF7B2D8B), 20, "Constituency"),
-    TALUKA_MANDAL("Taluka/Mandal/Block President", Color(0xFF7B2D8B), 21, "Taluka/Mandal"),
-    TALUKA_GS("Taluka/Mandal Gen. Secretary", Color(0xFF7B2D8B), 22, "Taluka/Mandal"),
+    CONSTITUENCY("Constituency/Assembly Incharge", Color(0xFF6D4C9F), 20, "Constituency"),
+    TALUKA_MANDAL("Taluka/Mandal/Block President", Color(0xFF6D4C9F), 21, "Taluka/Mandal"),
+    TALUKA_GS("Taluka/Mandal Gen. Secretary", Color(0xFF6D4C9F), 22, "Taluka/Mandal"),
     // ── Ward / Local Tier ────────────────────────────────────────────
-    WARD("Ward President", CivicColors.CivicRed, 23, "Ward"),
-    WARD_GS("Ward General Secretary", CivicColors.CivicRed, 24, "Ward"),
+    WARD("Ward President", Color(0xFFB83B64), 23, "Ward"),
+    WARD_GS("Ward General Secretary", Color(0xFFB83B64), 24, "Ward"),
     // ── Booth Tier ───────────────────────────────────────────────────
-    BOOTH("Booth Committee President", Color(0xFF374151), 25, "Booth");
+    BOOTH("Booth Committee President", Color(0xFF4B5563), 25, "Booth");
 
     companion object {
         fun fromString(value: String): HierarchyLevel {
@@ -74,13 +79,13 @@ sealed class VerificationStatus {
     object NotYetFetched : VerificationStatus()
 
     fun displayLabel(): String = when (this) {
-        is Verified -> "✓ Verified"
-        is PendingVerification -> "⏳ Pending Verification"
-        is Conflicting -> "⚠ Conflicting Sources"
-        is Stale -> "🕒 Stale — Needs Update"
-        is Rejected -> "✗ Rejected"
-        is Unknown -> "? Unknown"
-        is NotYetFetched -> "○ Not Yet Fetched"
+        is Verified -> "Verified"
+        is PendingVerification -> "Pending verification"
+        is Conflicting -> "Conflicting sources"
+        is Stale -> "Stale — needs update"
+        is Rejected -> "Rejected"
+        is Unknown -> "Unknown"
+        is NotYetFetched -> "Not yet recorded"
     }
 }
 
@@ -110,7 +115,7 @@ data class PoliticianProfile(
     val state: String? = null,
     val district: String? = null,
     val ward: String? = null,
-    val photoEmoji: String = "👤",
+    val photoUrl: String? = null,
     val bio: String,
     val education: String,
     val constituency: String? = null,
@@ -122,7 +127,7 @@ data class PoliticianProfile(
     val verificationStatus: VerificationStatus = VerificationStatus.NotYetFetched
 )
 
-/** UI data representation of a Party Node in tree view */
+/** One party position and its (possibly unknown) holder. */
 data class PartyTreeNode(
     val id: String,
     val partyName: String,
@@ -132,23 +137,20 @@ data class PartyTreeNode(
     val holderName: String,
     val state: String? = null,
     val district: String? = null,
-    val taluka: String? = null,
-    val ward: String? = null,
-    val jurisdictionLabel: String = "", // label shown on connection line
-    val photoEmoji: String = "👤",
     val photoUrl: String? = null,
-    val children: List<PartyTreeNode> = emptyList(),
-    val isExpanded: Boolean = true,
-    val verificationStatus: VerificationStatus = VerificationStatus.NotYetFetched,
-    val positionOrder: Int = 0, // used for layout ordering within the same parent
-    // Calculated virtual canvas layout position
-    val canvasX: Float = 0f,
-    val canvasY: Float = 0f
+    val verificationStatus: VerificationStatus = VerificationStatus.NotYetFetched
 ) {
     val isNotFetched: Boolean
-        get() = holderName.contains("Not yet fetched", ignoreCase = true) ||
-                holderName.contains("Leader data not yet available", ignoreCase = true) ||
-                verificationStatus is VerificationStatus.NotYetFetched && holderName.isBlank()
+        get() = holderName.isBlank() ||
+                holderName.contains("Not yet fetched", ignoreCase = true) ||
+                holderName.contains("Leader data not yet available", ignoreCase = true)
+
+    /** Name shown in UI — unknown holders read as an open seat, never as a placeholder string. */
+    val displayName: String
+        get() = if (isNotFetched) "Not yet recorded" else holderName
+
+    val jurisdiction: String
+        get() = listOfNotNull(district, state).joinToString(", ").ifEmpty { "All India" }
 }
 
 enum class PartyClassification {
@@ -176,7 +178,6 @@ data class PartyMetadata(
 /** Geographic Representation Data */
 data class StateGeoData(
     val stateName: String,
-    val stateCode: String,
     val leaderCount: Int,
     val districtCount: Int,
     val topLeaderName: String,
@@ -581,19 +582,22 @@ data class PartyStructureUiState(
     val currentScreen: FeatureScreen = FeatureScreen.PARTY_SELECTOR,
     val selectedParty: String = "BJP",
     val activeSubModule: WorkspaceSubModule = WorkspaceSubModule.HIERARCHY,
+    /** Parties that have structure data on this device (seeded or synced). */
+    val partiesWithData: Set<String> = emptySet(),
 
-    // Search & Filters
+    // Search — results are a jump list; the chart itself is never filtered
     val searchQuery: String = "",
-    val selectedLevelFilter: HierarchyLevel? = null,
+    val searchResults: List<PartyTreeNode> = emptyList(),
 
-    // Hierarchy Tree & Canvas
-    val rootNodes: List<PartyTreeNode> = emptyList(),
-    val allFlattenedNodes: List<PartyTreeNode> = emptyList(),
-    val expandedNodeIds: Set<String> = emptySet(),
-    val canvasScale: Float = 0.5f,
-    val canvasOffsetX: Float = 0f,
-    val canvasOffsetY: Float = 0f,
+    // Every position of the active party, unfiltered. Map and Insights read this.
+    val allNodes: List<PartyTreeNode> = emptyList(),
+
+    // Hierarchy chart
+    val chart: HierarchyChart = HierarchyChart.Empty,
+    val collapsedUnitIds: Set<String> = emptySet(),
     val focusedNodeId: String? = null,
+    /** Bumped on every locate request so re-locating the same node still pans. */
+    val focusRequest: Int = 0,
 
     // Popups & Profile Details
     val selectedNodeDetail: PartyTreeNode? = null,
@@ -608,7 +612,7 @@ data class PartyStructureUiState(
     // Loading & System
     val isLoading: Boolean = false,
     val isLocationLoading: Boolean = false,
-    val isOfflineMode: Boolean = true,
-    val totalLeadersCount: Int = 0,
-    val errorMessage: String? = null
+    val isSyncing: Boolean = false,
+    /** One-shot snackbar text; the screen calls userMessageShown() after displaying it. */
+    val userMessage: String? = null
 )

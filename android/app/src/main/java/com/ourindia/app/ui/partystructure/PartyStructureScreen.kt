@@ -1,432 +1,102 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.ourindia.app.ui.partystructure
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.net.Uri
+import android.os.Bundle
+import android.os.Looper
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.AccountTree
+import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.NearMe
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.shape.CircleShape
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ourindia.app.data.geo.LocalGeographicResolver
 import com.ourindia.app.data.geo.ResolvedLocation
 import com.ourindia.app.ui.theme.CivicColors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PartyStructureScreen(
     viewModel: PartyStructureViewModel = hiltViewModel(),
     modifier: Modifier = Modifier
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val activeParty = PartyCatalog.getParty(uiState.selectedParty)
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // Hoisted out of the screen switch: it caches parsed boundary files, and the old
+    // per-entry instance re-parsed them every time the workspace was re-entered.
+    val resolver = remember { LocalGeographicResolver(context.applicationContext) }
 
     BackHandler(enabled = uiState.currentScreen != FeatureScreen.PARTY_SELECTOR) {
         when (uiState.currentScreen) {
-            FeatureScreen.POLITICIAN_PROFILE -> {
-                viewModel.navigateBackFromProfile()
+            FeatureScreen.POLITICIAN_PROFILE -> viewModel.navigateBackFromProfile()
+            FeatureScreen.WORKSPACE -> when {
+                uiState.selectedNodeDetail != null -> viewModel.dismissNodeDetail()
+                uiState.searchQuery.isNotEmpty() -> viewModel.onSearchQueryChanged("")
+                uiState.activeSubModule == WorkspaceSubModule.MAP && uiState.selectedDistrict != null -> viewModel.onMapDistrictSelected(null)
+                uiState.activeSubModule == WorkspaceSubModule.MAP && uiState.selectedState != null -> viewModel.onMapStateSelected(null)
+                uiState.activeSubModule != WorkspaceSubModule.HIERARCHY -> viewModel.switchSubModule(WorkspaceSubModule.HIERARCHY)
+                else -> viewModel.navigateToPartySelector()
             }
-            FeatureScreen.WORKSPACE -> {
-                if (uiState.selectedNodeDetail != null) {
-                    viewModel.dismissNodeDetail()
-                } else if (uiState.activeSubModule == WorkspaceSubModule.MAP && uiState.selectedDistrict != null) {
-                    viewModel.onMapDistrictSelected(null)
-                } else if (uiState.activeSubModule == WorkspaceSubModule.MAP && uiState.selectedState != null) {
-                    viewModel.onMapStateSelected(null)
-                } else {
-                    viewModel.navigateToPartySelector()
-                }
-            }
-            else -> {}
+            FeatureScreen.PARTY_SELECTOR -> Unit
         }
     }
 
     AnimatedContent(
         targetState = uiState.currentScreen,
-        transitionSpec = {
-            fadeIn() + slideInHorizontally() togetherWith fadeOut() + slideOutHorizontally()
-        },
-        label = "FeatureScreenTransition"
+        transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) },
+        label = "FeatureScreenTransition",
+        modifier = modifier
     ) { screen ->
         when (screen) {
-            // ── Screen 1: Political Parties Selector ─────────────────────
-            FeatureScreen.PARTY_SELECTOR -> {
-                Scaffold(
-                    topBar = {
-                        TopAppBar(
-                            title = {
-                                Text(
-                                    text = "Our India • Political Parties",
-                                    fontWeight = FontWeight.Bold,
-                                    color = CivicColors.Navy,
-                                    fontSize = 18.sp
-                                )
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = CivicColors.Background
-                            )
-                        )
-                    },
-                    containerColor = CivicColors.Background
-                ) { innerPadding ->
-                    PartySelectionGrid(
-                        parties = PartyCatalog.parties,
-                        onSelectParty = viewModel::onSelectPartyFromGrid,
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
-            }
+            FeatureScreen.PARTY_SELECTOR -> PartySelectorScreen(
+                partiesWithData = uiState.partiesWithData,
+                onSelectParty = viewModel::onSelectPartyFromGrid
+            )
 
-            // ── Screen 2: Political Workspace (3 Switchable Sub-Modules) ─
-            FeatureScreen.WORKSPACE -> {
-                if (activeParty == null) return@AnimatedContent
-                val screenContext = LocalContext.current
-                val coroutineScope = rememberCoroutineScope()
-                val resolver = remember { LocalGeographicResolver(screenContext) }
+            FeatureScreen.WORKSPACE -> WorkspaceScreen(
+                state = uiState,
+                party = PartyCatalog.getParty(uiState.selectedParty),
+                viewModel = viewModel,
+                resolver = resolver
+            )
 
-                Scaffold(
-                    topBar = {
-                        TopAppBar(
-                            title = {
-                                Column {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "${activeParty.symbolEmoji} ${activeParty.name}",
-                                            fontWeight = FontWeight.Bold,
-                                            color = CivicColors.Navy,
-                                            fontSize = 16.sp
-                                        )
-                                    }
-                                    Text(
-                                        text = "Political Workspace • ${uiState.activeSubModule.title}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = CivicColors.TextSecondary
-                                    )
-                                }
-                            },
-                            navigationIcon = {
-                                IconButton(onClick = viewModel::navigateToPartySelector) {
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowBack,
-                                        contentDescription = "Switch Party",
-                                        tint = CivicColors.Navy
-                                    )
-                                }
-                            },
-                            actions = {
-                                IconButton(onClick = { viewModel.loadData() }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = "Refresh Data",
-                                        tint = CivicColors.Navy
-                                    )
-                                }
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = CivicColors.Background
-                            )
-                        )
-                    },
-                    containerColor = CivicColors.Background,
-                    modifier = modifier
-                ) { innerPadding ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 14.dp)
-                        ) {
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // 1. Sub-Module Switcher Tab Bar
-                            WorkspaceSubModuleTabBar(
-                                activeSubModule = uiState.activeSubModule,
-                                onSubModuleSelected = viewModel::switchSubModule
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // 2. Universal Search Bar (only shown in Hierarchy)
-                            if (uiState.activeSubModule == WorkspaceSubModule.HIERARCHY) {
-                                PartySearchBar(
-                                    query = uiState.searchQuery,
-                                    onQueryChange = viewModel::onSearchQueryChanged
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                            }
-
-                            // 3. Location filter indicator (Active across all 3 sub-modules: Hierarchy, Map, Analytics)
-                            val locationState = uiState.resolvedLocation?.state ?: uiState.selectedState
-                            if (locationState != null) {
-                                Surface(
-                                    color = CivicColors.Saffron.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        val districtPart = uiState.resolvedLocation?.district ?: uiState.selectedDistrict
-                                        Text(
-                                            text = "📍 $locationState" + (districtPart?.let { " • $it" } ?: ""),
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = CivicColors.Navy
-                                        )
-                                        TextButton(
-                                            onClick = { viewModel.onLocationResolved(null) },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                                        ) {
-                                            Text("Clear Location", fontSize = 11.sp, color = CivicColors.Saffron, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                            }
-
-                            // 4. Sub-Module Content Viewport
-                            if (uiState.isLoading) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(color = CivicColors.Saffron)
-                                }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f)
-                                        .clipToBounds()
-                                ) {
-                                    when (uiState.activeSubModule) {
-                                        // Sub-Module 1: Zoomable/Pannable Infinite Canvas Hierarchy
-                                        WorkspaceSubModule.HIERARCHY -> {
-                                            PartyHierarchyCanvas(
-                                                rootNodes = uiState.rootNodes,
-                                                allNodes = uiState.allFlattenedNodes,
-                                                partyMetadata = activeParty,
-                                                focusedNodeId = uiState.focusedNodeId,
-                                                onNodeClicked = viewModel::onNodeClicked,
-                                                onToggleExpand = viewModel::toggleNodeExpand
-                                            )
-                                        }
-
-                                        // Sub-Module 2: Interactive Map Explorer
-                                        WorkspaceSubModule.MAP -> {
-                                            PartyMapExplorer(
-                                                partyMetadata = activeParty,
-                                                stateGeoDataList = uiState.stateGeoDataList,
-                                                selectedState = uiState.selectedState,
-                                                selectedDistrict = uiState.selectedDistrict,
-                                                resolvedLocation = uiState.resolvedLocation,
-                                                onStateSelected = viewModel::onMapStateSelected,
-                                                onDistrictSelected = viewModel::onMapDistrictSelected,
-                                                allNodes = uiState.allFlattenedNodes,
-                                                onPoliticianClicked = viewModel::onNodeClicked,
-                                                onLocateInHierarchy = viewModel::locateInHierarchy,
-                                                onMapLongPressed = { lat, lng ->
-                                                    coroutineScope.launch {
-                                                        val loc = resolver.resolveLocation(lat, lng)
-                                                        if (loc != null) {
-                                                            viewModel.onLocationResolved(loc)
-                                                        }
-                                                    }
-                                                }
-                                            )
-                                        }
-
-                                        // Sub-Module 3: Analytics & Insights Dashboard
-                                        WorkspaceSubModule.ANALYTICS -> {
-                                            PartyAnalyticsDashboard(
-                                                partyMetadata = activeParty,
-                                                allNodes = uiState.allFlattenedNodes,
-                                                stateGeoDataList = uiState.stateGeoDataList,
-                                                selectedState = uiState.selectedState,
-                                                onClearLocationFilter = { viewModel.onLocationResolved(null) }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // ── Shared Floating My Location Button ────────────────────
-                        val context = LocalContext.current
-
-                        var hasLocationPermission by remember {
-                            mutableStateOf(
-                                androidx.core.content.ContextCompat.checkSelfPermission(
-                                    context,
-                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                            )
-                        }
-                        var showPermissionDeniedMessage by remember { mutableStateOf(false) }
-                        var showGpsDisabledDialog by remember { mutableStateOf(false) }
-
-                        val permissionLauncher = rememberLauncherForActivityResult(
-                            contract = ActivityResultContracts.RequestMultiplePermissions()
-                        ) { permissions ->
-                            val granted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                                          permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
-                            hasLocationPermission = granted
-                            if (granted) {
-                                val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
-                                val isEnabled = lm?.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) == true ||
-                                               lm?.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) == true
-                                if (!isEnabled) {
-                                    showGpsDisabledDialog = true
-                                } else {
-                                    viewModel.setLocationLoading(true)
-                                    triggerSharedLocationCentering(context, coroutineScope, resolver, viewModel::onLocationResolved)
-                                }
-                            } else {
-                                showPermissionDeniedMessage = true
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(
-                                    bottom = if (uiState.activeSubModule == WorkspaceSubModule.HIERARCHY) 96.dp else 24.dp,
-                                    end = 24.dp
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (uiState.isLocationLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(66.dp),
-                                    color = CivicColors.Saffron,
-                                    strokeWidth = 3.dp
-                                )
-                            }
-
-                            FloatingActionButton(
-                                onClick = {
-                                    val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
-                                    val isEnabled = lm?.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) == true ||
-                                                   lm?.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) == true
-
-                                    if (!hasLocationPermission) {
-                                        permissionLauncher.launch(
-                                            arrayOf(
-                                                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                                android.Manifest.permission.ACCESS_COARSE_LOCATION
-                                            )
-                                        )
-                                    } else if (!isEnabled) {
-                                        showGpsDisabledDialog = true
-                                    } else {
-                                        viewModel.setLocationLoading(true)
-                                        triggerSharedLocationCentering(context, coroutineScope, resolver, viewModel::onLocationResolved)
-                                    }
-                                },
-                                containerColor = Color.White,
-                                contentColor = CivicColors.Navy,
-                                shape = CircleShape,
-                                modifier = Modifier
-                                    .border(1.dp, CivicColors.Navy.copy(alpha = 0.2f), CircleShape)
-                                    .size(56.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MyLocation,
-                                    contentDescription = "My Location",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-
-                        if (showPermissionDeniedMessage) {
-                            AlertDialog(
-                                onDismissRequest = { showPermissionDeniedMessage = false },
-                                title = { Text("Location Permission Required") },
-                                text = { Text("To inspect political presence in your region, please enable Location permissions in system settings.") },
-                                confirmButton = {
-                                    TextButton(onClick = {
-                                        showPermissionDeniedMessage = false
-                                        try {
-                                            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                                data = android.net.Uri.fromParts("package", context.packageName, null)
-                                            }
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {}
-                                    }) {
-                                        Text("Open Settings")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showPermissionDeniedMessage = false }) {
-                                        Text("Cancel")
-                                    }
-                                }
-                            )
-                        }
-
-                        if (showGpsDisabledDialog) {
-                            AlertDialog(
-                                onDismissRequest = { showGpsDisabledDialog = false },
-                                title = { Text("Location Services Disabled") },
-                                text = { Text("GPS/Location Services are currently disabled on your device. Please enable Location in system settings to locate your local political hierarchy.") },
-                                confirmButton = {
-                                    TextButton(onClick = {
-                                        showGpsDisabledDialog = false
-                                        try {
-                                            val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {}
-                                    }) {
-                                        Text("Enable Location")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showGpsDisabledDialog = false }) {
-                                        Text("Cancel")
-                                    }
-                                }
-                            )
-                        }
-
-                        // Floating Glassy Politician Popup
-                        PoliticianGlassyPopup(
-                            node = uiState.selectedNodeDetail,
-                            onDismiss = viewModel::dismissNodeDetail,
-                            onViewProfile = viewModel::navigateToProfile,
-                            modifier = Modifier.align(Alignment.BottomCenter)
-                        )
-                    }
-                }
-            }
-
-            // ── Screen 3: Dedicated Politician Profile & Timeline History
             FeatureScreen.POLITICIAN_PROFILE -> {
-                val profile = uiState.selectedProfile
+                // Held for the exit fade; the live state clears the profile on back.
+                val profile = remember { uiState.selectedProfile }
                 if (profile != null) {
                     PoliticianProfileScreen(
                         profile = profile,
@@ -439,48 +109,399 @@ fun PartyStructureScreen(
     }
 }
 
-private fun triggerSharedLocationCentering(
-    context: android.content.Context,
-    coroutineScope: kotlinx.coroutines.CoroutineScope,
-    resolver: com.ourindia.app.data.geo.GeographicResolver,
-    onLocationResolved: (ResolvedLocation?) -> Unit
+@Composable
+private fun PartySelectorScreen(
+    partiesWithData: Set<String>,
+    onSelectParty: (String) -> Unit
 ) {
-    try {
-        val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
-        val provider = if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-            android.location.LocationManager.GPS_PROVIDER
-        } else {
-            android.location.LocationManager.NETWORK_PROVIDER
-        }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TricolorRule(Modifier.width(18.dp))
+                        Text("Our India", style = MaterialTheme.typography.titleLarge, color = CivicColors.Navy)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = CivicColors.Background)
+            )
+        },
+        containerColor = CivicColors.Background
+    ) { padding ->
+        PartySelectionGrid(
+            parties = PartyCatalog.parties,
+            partiesWithData = partiesWithData,
+            onSelectParty = onSelectParty,
+            contentPadding = padding
+        )
+    }
+}
 
-        @Suppress("MissingPermission")
-        val lastKnown = locationManager.getLastKnownLocation(provider)
-        if (lastKnown != null) {
-            coroutineScope.launch {
-                val resolved = resolver.resolveLocation(lastKnown.latitude, lastKnown.longitude)
-                onLocationResolved(resolved)
-            }
-        } else {
-            @Suppress("MissingPermission")
-            locationManager.requestSingleUpdate(
-                provider,
-                object : android.location.LocationListener {
-                    override fun onLocationChanged(location: android.location.Location) {
-                        coroutineScope.launch {
-                            val resolved = resolver.resolveLocation(location.latitude, location.longitude)
-                            onLocationResolved(resolved)
+@Composable
+private fun WorkspaceScreen(
+    state: PartyStructureUiState,
+    party: PartyMetadata,
+    viewModel: PartyStructureViewModel,
+    resolver: LocalGeographicResolver
+) {
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    fun say(message: String) {
+        scope.launch { snackbar.showSnackbar(message) }
+    }
+
+    LaunchedEffect(state.userMessage) {
+        val message = state.userMessage ?: return@LaunchedEffect
+        // Shown on the screen scope: clearing the message re-keys this effect, which
+        // would cancel a snackbar shown from inside it the moment it appeared.
+        say(message)
+        viewModel.userMessageShown()
+    }
+
+    val locateMe = rememberLocateMe(
+        resolver = resolver,
+        onStart = { viewModel.setLocationLoading(true) },
+        onResolved = viewModel::onLocationResolved,
+        onFailed = { message ->
+            viewModel.setLocationLoading(false)
+            say(message)
+        }
+    )
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = viewModel::navigateToPartySelector) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "All parties", tint = CivicColors.Navy)
+                    }
+                },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PartySymbol(party = party, size = 36.dp)
+                        Column {
+                            Text(party.shortName, style = MaterialTheme.typography.titleMedium, color = CivicColors.Navy, maxLines = 1)
+                            Text(
+                                party.name,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = CivicColors.TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
-                    override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
-                    override fun onProviderEnabled(provider: String) {}
-                    override fun onProviderDisabled(provider: String) {}
                 },
-                null
+                actions = {
+                    BusyIconButton(busy = state.isLocationLoading, onClick = locateMe) {
+                        Icon(Icons.Outlined.MyLocation, contentDescription = "Use my location", tint = CivicColors.Navy)
+                    }
+                    BusyIconButton(busy = state.isSyncing, onClick = viewModel::refresh) {
+                        Icon(Icons.Outlined.Sync, contentDescription = "Sync latest data", tint = CivicColors.Navy)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = CivicColors.Background)
+            )
+        },
+        bottomBar = {
+            NavigationBar(containerColor = CivicColors.Surface, tonalElevation = 0.dp) {
+                WorkspaceSubModule.entries.forEach { tab ->
+                    NavigationBarItem(
+                        selected = tab == state.activeSubModule,
+                        onClick = { viewModel.switchSubModule(tab) },
+                        icon = { Icon(tab.icon, contentDescription = null) },
+                        label = { Text(tab.title) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = CivicColors.Navy,
+                            selectedTextColor = CivicColors.Navy,
+                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+                            unselectedIconColor = CivicColors.TextSecondary,
+                            unselectedTextColor = CivicColors.TextSecondary
+                        )
+                    )
+                }
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
+        containerColor = CivicColors.Background
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            state.resolvedLocation?.state?.let { here ->
+                NearYouBar(
+                    label = listOfNotNull(state.resolvedLocation.district, here).joinToString(", "),
+                    onClear = { viewModel.onLocationResolved(null) }
+                )
+            }
+
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                if (state.isLoading) {
+                    CircularProgressIndicator(color = CivicColors.Saffron, modifier = Modifier.align(Alignment.Center))
+                } else when (state.activeSubModule) {
+                    WorkspaceSubModule.HIERARCHY -> HierarchyTab(
+                        state = state,
+                        party = party,
+                        viewModel = viewModel
+                    )
+
+                    WorkspaceSubModule.MAP -> PartyMapExplorer(
+                        partyMetadata = party,
+                        resolver = resolver,
+                        stateGeoDataList = state.stateGeoDataList,
+                        allNodes = state.allNodes,
+                        selectedState = state.selectedState,
+                        selectedDistrict = state.selectedDistrict,
+                        resolvedLocation = state.resolvedLocation,
+                        onStateSelected = viewModel::onMapStateSelected,
+                        onDistrictSelected = viewModel::onMapDistrictSelected,
+                        onPositionClicked = viewModel::onNodeClicked,
+                        onMapLongPressed = { lat, lng ->
+                            scope.launch {
+                                val loc = resolver.resolveLocation(lat, lng)
+                                if (loc != null) viewModel.onLocationResolved(loc)
+                                else say("That point is outside India's mapped boundaries")
+                            }
+                        }
+                    )
+
+                    WorkspaceSubModule.ANALYTICS -> PartyAnalyticsDashboard(
+                        partyMetadata = party,
+                        allNodes = state.allNodes,
+                        stateGeoDataList = state.stateGeoDataList,
+                        selectedState = state.selectedState,
+                        onClearLocationFilter = {
+                            if (state.resolvedLocation != null) viewModel.onLocationResolved(null)
+                            else viewModel.onMapStateSelected(null)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    state.selectedNodeDetail?.let { node ->
+        PositionDetailSheet(
+            node = node,
+            onDismiss = viewModel::dismissNodeDetail,
+            onViewProfile = viewModel::navigateToProfile,
+            onLocateInHierarchy = viewModel::locateInHierarchy
+        )
+    }
+}
+
+@Composable
+private fun HierarchyTab(
+    state: PartyStructureUiState,
+    party: PartyMetadata,
+    viewModel: PartyStructureViewModel
+) {
+    Box(Modifier.fillMaxSize()) {
+        if (state.chart.units.isEmpty()) {
+            EmptyState(
+                icon = Icons.Outlined.AccountTree,
+                title = "Structure not mapped yet",
+                message = "${party.name}'s organisation hasn't been ingested. Sync to check for new data, or explore another party.",
+                modifier = Modifier.align(Alignment.Center),
+                action = {
+                    OutlinedButton(onClick = viewModel::navigateToPartySelector, border = BorderStroke(1.dp, CivicColors.Outline)) {
+                        Text("Choose another party", color = CivicColors.Navy)
+                    }
+                }
+            )
+        } else {
+            PartyHierarchyCanvas(
+                chart = state.chart,
+                partyColor = party.color,
+                focusedNodeId = state.focusedNodeId,
+                focusRequest = state.focusRequest,
+                onNodeClicked = viewModel::onNodeClicked,
+                onToggleUnit = viewModel::toggleUnit,
+                onSetAllExpanded = viewModel::setAllExpanded,
+                contentTopInset = 80.dp
+            )
+            HierarchySearchField(
+                query = state.searchQuery,
+                onQueryChange = viewModel::onSearchQueryChanged,
+                results = state.searchResults,
+                onResultChosen = viewModel::onSearchResultChosen,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .widthIn(max = 560.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun NearYouBar(label: String, onClear: () -> Unit) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(Icons.Outlined.NearMe, contentDescription = null, tint = CivicColors.SaffronDeep, modifier = Modifier.size(16.dp))
+            Text(
+                text = "Near you · $label",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            IconButton(onClick = onClear, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Close, contentDescription = "Clear location filter", tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun BusyIconButton(busy: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    IconButton(onClick = onClick, enabled = !busy) {
+        if (busy) CircularProgressIndicator(strokeWidth = 2.dp, color = CivicColors.Saffron, modifier = Modifier.size(20.dp))
+        else icon()
+    }
+}
+
+// ── Location ─────────────────────────────────────────────────────────────────
+
+/** Permission → services check → one fix → resolve. Returns the click handler. */
+@Composable
+private fun rememberLocateMe(
+    resolver: LocalGeographicResolver,
+    onStart: () -> Unit,
+    onResolved: (ResolvedLocation) -> Unit,
+    onFailed: (String) -> Unit
+): () -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showPermissionDialog by remember { mutableStateOf(false) }
+    var showServicesDialog by remember { mutableStateOf(false) }
+
+    val start = {
+        if (!locationServicesOn(context)) {
+            showServicesDialog = true
+        } else {
+            onStart()
+            requestFix(context, scope, resolver, onResolved, onFailed)
+        }
+    }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        if (grants.values.any { it }) start() else showPermissionDialog = true
+    }
+
+    if (showPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showPermissionDialog = false },
+            title = { Text("Location permission needed") },
+            text = { Text("Allow location access to see the party posts that cover where you are.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPermissionDialog = false
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                        )
+                    }
+                }) { Text("Open settings") }
+            },
+            dismissButton = { TextButton(onClick = { showPermissionDialog = false }) { Text("Not now") } }
+        )
+    }
+    if (showServicesDialog) {
+        AlertDialog(
+            onDismissRequest = { showServicesDialog = false },
+            title = { Text("Location is off") },
+            text = { Text("Turn on location services to find the party structure around you.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showServicesDialog = false
+                    runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                }) { Text("Turn on") }
+            },
+            dismissButton = { TextButton(onClick = { showServicesDialog = false }) { Text("Not now") } }
+        )
+    }
+
+    return {
+        val granted = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            .any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+        if (granted) start()
+        else launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+}
+
+private fun locationServicesOn(context: Context): Boolean {
+    val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return false
+    return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+}
+
+@SuppressLint("MissingPermission")
+private fun requestFix(
+    context: Context,
+    scope: CoroutineScope,
+    resolver: LocalGeographicResolver,
+    onResolved: (ResolvedLocation) -> Unit,
+    onFailed: (String) -> Unit
+) {
+    val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    fun deliver(location: Location) {
+        scope.launch {
+            val resolved = resolver.resolveLocation(location.latitude, location.longitude)
+            if (resolved != null) onResolved(resolved) else onFailed("Your location is outside India's mapped boundaries")
+        }
+    }
+
+    try {
+        val last = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+            .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+            .maxByOrNull { it.time }
+        // A cached fix is fine if recent; a stale one could be another city.
+        if (last != null && System.currentTimeMillis() - last.time < 10 * 60_000) {
+            deliver(last)
+            return
+        }
+
+        val provider = if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
+        var done = false
+        // All four callbacks are overridden on purpose: they are only default methods from
+        // API 30, and on 26–29 the platform calls them and would hit an AbstractMethodError.
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                if (done) return
+                done = true
+                deliver(location)
+            }
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
+        @Suppress("DEPRECATION")
+        lm.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+        // Without a timeout the spinner ran forever indoors where GPS never fixes.
+        scope.launch {
+            delay(15_000)
+            if (done) return@launch
+            done = true
+            lm.removeUpdates(listener)
+            if (last != null) deliver(last) else onFailed("Couldn't get a location fix — try again with Wi-Fi on")
+        }
     } catch (e: SecurityException) {
-        onLocationResolved(null)
+        onFailed("Location permission was revoked")
     } catch (e: Exception) {
-        onLocationResolved(null)
+        onFailed("Location is unavailable right now")
     }
 }

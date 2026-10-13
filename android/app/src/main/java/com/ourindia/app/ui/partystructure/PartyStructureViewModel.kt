@@ -7,6 +7,7 @@ import com.ourindia.app.data.local.dao.PartyNodeDao
 import com.ourindia.app.data.local.entity.PartyNodeEntity
 import com.ourindia.app.data.repository.PoliticalSyncRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,61 +21,81 @@ class PartyStructureViewModel @Inject constructor(
     private val syncRepository: PoliticalSyncRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(PartyStructureUiState())
+    private val _uiState = MutableStateFlow(PartyStructureUiState(partiesWithData = SEEDED_PARTIES))
     val uiState: StateFlow<PartyStructureUiState> = _uiState.asStateFlow()
 
     private var rawEntitiesList: List<PartyNodeEntity> = emptyList()
+    private var orgTree: OrgTree = OrgTree.Empty
+
+    // One live Room observation at a time. Previously every party switch and every
+    // Refresh tap started another collector without cancelling the old one; Room
+    // re-emits all of them on any table write, so a stale party's rows could land
+    // in the chart after the new party's.
+    private var partyJob: Job? = null
+
+    // Seed each bundled party at most once per process. Without this, a party with no
+    // seed data re-inserted on every emission of its own empty query and spun forever.
+    private val seedAttempted = mutableSetOf<String>()
 
     init {
-        loadData()
-        // Trigger background delta sync from Supabase into Room cache
         viewModelScope.launch {
-            try {
-                syncRepository.performDeltaSync()
-            } catch (e: Exception) {
-                // Graceful fallback to offline Room cache
+            partyNodeDao.observePartyNames().collect { names ->
+                _uiState.update { it.copy(partiesWithData = names.toSet() + SEEDED_PARTIES) }
+            }
+        }
+        viewModelScope.launch { syncRepository.performDeltaSync() }
+    }
+
+    /** Pulls the latest changes from Supabase. Room re-emits the open party if rows changed. */
+    fun refresh() {
+        if (_uiState.value.isSyncing) return
+        _uiState.update { it.copy(isSyncing = true) }
+        viewModelScope.launch {
+            val result = runCatching { syncRepository.performDeltaSync() }.getOrElse { Result.failure(it) }
+            _uiState.update {
+                it.copy(
+                    isSyncing = false,
+                    userMessage = if (result.isSuccess) "Up to date" else "Couldn't reach the server — showing saved data"
+                )
             }
         }
     }
 
-    fun loadData() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            partyNodeDao.observeByParty(_uiState.value.selectedParty).collect { entities ->
-                if (entities.isEmpty()) {
-                    seedMockPartyData()
-                } else {
-                    rawEntitiesList = entities
-                    updateState()
-                }
-            }
-        }
+    fun userMessageShown() {
+        _uiState.update { it.copy(userMessage = null) }
     }
 
     // ── Navigation & Flow ────────────────────────────────────────────
 
     fun onSelectPartyFromGrid(partyShortName: String) {
+        orgTree = OrgTree.Empty
+        rawEntitiesList = emptyList()
         _uiState.update {
             it.copy(
                 selectedParty = partyShortName,
                 currentScreen = FeatureScreen.WORKSPACE,
                 activeSubModule = WorkspaceSubModule.HIERARCHY,
                 searchQuery = "",
-                selectedLevelFilter = null,
+                searchResults = emptyList(),
+                allNodes = emptyList(),
+                chart = HierarchyChart.Empty,
+                collapsedUnitIds = emptySet(),
                 selectedNodeDetail = null,
                 focusedNodeId = null,
-                selectedState = null,
-                selectedDistrict = null,
+                // The location filter is shared across parties; a map pick is not.
+                selectedState = it.resolvedLocation?.state,
+                selectedDistrict = it.resolvedLocation?.district,
                 isLoading = true
             )
         }
-        viewModelScope.launch {
+        partyJob?.cancel()
+        partyJob = viewModelScope.launch {
             partyNodeDao.observeByParty(partyShortName).collect { entities ->
-                if (entities.isEmpty()) {
-                    seedMockPartyDataForParty(partyShortName)
+                if (entities.isEmpty() && partyShortName in SEEDED_PARTIES && seedAttempted.add(partyShortName)) {
+                    partyNodeDao.insertAll(generateSeedNodes(partyShortName)) // re-emits with rows
                 } else {
                     rawEntitiesList = entities
-                    updateState()
+                    rebuild()
                 }
             }
         }
@@ -100,48 +121,71 @@ class PartyStructureViewModel @Inject constructor(
     }
 
     fun locateInHierarchy(nodeId: String) {
+        expandPathTo(nodeId)
         _uiState.update {
             it.copy(
                 currentScreen = FeatureScreen.WORKSPACE,
                 activeSubModule = WorkspaceSubModule.HIERARCHY,
                 focusedNodeId = nodeId,
-                selectedProfile = null
+                focusRequest = it.focusRequest + 1,
+                selectedProfile = null,
+                selectedNodeDetail = null
             )
         }
     }
 
-    // ── Search & Filter ──────────────────────────────────────────────
+    // ── Search ───────────────────────────────────────────────────────
 
     fun onSearchQueryChanged(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
-        updateState()
+        _uiState.update { it.copy(searchQuery = query, searchResults = search(it.allNodes, query)) }
     }
 
-    fun onLevelFilterChanged(level: HierarchyLevel?) {
-        _uiState.update { it.copy(selectedLevelFilter = level) }
-        updateState()
+    fun onSearchResultChosen(node: PartyTreeNode) {
+        _uiState.update { it.copy(searchQuery = "", searchResults = emptyList()) }
+        locateInHierarchy(node.id)
     }
 
-    // ── Hierarchy & Canvas Interactions ──────────────────────────────
+    private fun search(nodes: List<PartyTreeNode>, query: String): List<PartyTreeNode> {
+        val q = query.trim()
+        if (q.length < 2) return emptyList()
+        return nodes
+            .filter { n ->
+                // The "Not yet fetched" placeholder is not a name; matching it would hit every vacancy.
+                listOfNotNull(n.holderName.takeUnless { n.isNotFetched }, n.roleTitle, n.state, n.district)
+                    .any { it.contains(q, ignoreCase = true) }
+            }
+            .sortedWith(compareBy({ it.isNotFetched }, { it.level.tier }))
+            .take(20)
+    }
+
+    // ── Hierarchy Chart Interactions ─────────────────────────────────
 
     fun onNodeClicked(node: PartyTreeNode) {
-        _uiState.update { it.copy(selectedNodeDetail = node, focusedNodeId = node.id) }
+        _uiState.update { it.copy(selectedNodeDetail = node) }
     }
 
     fun dismissNodeDetail() {
         _uiState.update { it.copy(selectedNodeDetail = null) }
     }
 
-    fun toggleNodeExpand(nodeId: String) {
-        _uiState.update { state ->
-            val newExpanded = if (state.expandedNodeIds.contains(nodeId)) {
-                state.expandedNodeIds - nodeId
-            } else {
-                state.expandedNodeIds + nodeId
-            }
-            state.copy(expandedNodeIds = newExpanded)
-        }
-        updateState()
+    fun toggleUnit(unitId: String) {
+        val current = _uiState.value.collapsedUnitIds
+        relayout(if (unitId in current) current - unitId else current + unitId)
+    }
+
+    fun setAllExpanded(expanded: Boolean) {
+        relayout(if (expanded) emptySet() else orgTree.defaultCollapsed())
+    }
+
+    private fun relayout(collapsed: Set<String>) {
+        _uiState.update { it.copy(collapsedUnitIds = collapsed, chart = layoutOrgChart(orgTree, collapsed)) }
+    }
+
+    private fun expandPathTo(nodeId: String) {
+        val unit = orgTree.unitOf(nodeId) ?: return
+        val path = orgTree.ancestors(unit.id).toSet()
+        val current = _uiState.value.collapsedUnitIds
+        if (current.any { it in path }) relayout(current - path)
     }
 
     // ── Map Sub-Module Interactions ──────────────────────────────────
@@ -161,8 +205,8 @@ class PartyStructureViewModel @Inject constructor(
 
     /**
      * Called when a geographic location has been resolved.
-     * Updates shared location state across Hierarchy, Map, and Analytics.
-     * Then navigates hierarchy to deepest available local political level.
+     * Updates shared location state across Hierarchy, Map, and Analytics,
+     * then focuses the chart on the deepest position covering that place.
      */
     fun onLocationResolved(location: ResolvedLocation?) {
         _uiState.update {
@@ -174,25 +218,67 @@ class PartyStructureViewModel @Inject constructor(
                 isLocationLoading = false
             )
         }
+        val state = location?.state ?: return
 
-        if (location?.state == null) {
-            updateState()
-            return
-        }
-
-        // Expand path to state node
-        val stateNode = rawEntitiesList.firstOrNull { entity ->
-            (entity.level == HierarchyLevel.STATE.name || entity.level.startsWith("STATE")) &&
-                entity.state.equals(location.state, ignoreCase = true)
-        }
-        if (stateNode != null) {
-            _uiState.update { state ->
-                state.copy(expandedNodeIds = state.expandedNodeIds + stateNode.id)
+        // Walk from booth up to state; first level with a match in this place wins.
+        val nodes = _uiState.value.allNodes
+        val deepest = LOCAL_LEVEL_PRIORITY.firstNotNullOfOrNull { level ->
+            nodes.firstOrNull { n ->
+                n.level == level &&
+                    n.state.equals(state, ignoreCase = true) &&
+                    (location.district == null || n.district.isNullOrEmpty() ||
+                        n.district.equals(location.district, ignoreCase = true))
             }
-        }
+        } ?: return
 
-        // Find deepest matching node (walk from ward/booth up to state/national)
-        val levelPriority = listOf(
+        expandPathTo(deepest.id)
+        _uiState.update { it.copy(focusedNodeId = deepest.id, focusRequest = it.focusRequest + 1) }
+    }
+
+    // ── State Computation ────────────────────────────────────────────
+
+    private fun rebuild() {
+        val firstLoad = orgTree.units.isEmpty()
+        val nodes = rawEntitiesList.map { it.toTreeNode() }
+        orgTree = buildOrgTree(nodes)
+        val collapsed = if (firstLoad) orgTree.defaultCollapsed() else _uiState.value.collapsedUnitIds
+        _uiState.update {
+            it.copy(
+                allNodes = nodes,
+                chart = layoutOrgChart(orgTree, collapsed),
+                collapsedUnitIds = collapsed,
+                stateGeoDataList = calculateStateGeoData(rawEntitiesList),
+                searchResults = search(nodes, it.searchQuery),
+                isLoading = false
+            )
+        }
+    }
+
+    private fun PartyNodeEntity.toTreeNode(): PartyTreeNode {
+        val levelEnum = HierarchyLevel.fromString(level)
+        val notFetched = holderName.isBlank() || holderName.contains("Not yet fetched", ignoreCase = true)
+        return PartyTreeNode(
+            id = id,
+            partyName = partyName,
+            level = levelEnum,
+            parentId = parentId,
+            roleTitle = roleTitle,
+            holderName = holderName,
+            state = state,
+            district = district,
+            // Photo lookup matches by surname, so it is limited to the top two tiers
+            // where the bundled names are unambiguous (a lower-tier "Gandhi" or "Stalin"
+            // would otherwise get the wrong face).
+            photoUrl = if (levelEnum.tier <= 2 && !notFetched) getLeaderPhotoUrl(holderName) else null,
+            verificationStatus = if (notFetched) VerificationStatus.NotYetFetched else VerificationStatus.Verified
+        )
+    }
+
+    companion object {
+        /** Parties with a bundled seed hierarchy, keyed by catalog short name. */
+        val SEEDED_PARTIES = setOf("BJP", "INC", "AAP", "NCP(SP)", "TMC", "DMK")
+
+        private val LOCAL_LEVEL_PRIORITY = listOf(
             HierarchyLevel.BOOTH, HierarchyLevel.WARD_GS, HierarchyLevel.WARD,
             HierarchyLevel.TALUKA_GS, HierarchyLevel.TALUKA_MANDAL,
             HierarchyLevel.CONSTITUENCY,
@@ -202,60 +288,6 @@ class PartyStructureViewModel @Inject constructor(
             HierarchyLevel.STATE_GS_ORG, HierarchyLevel.STATE_GS,
             HierarchyLevel.STATE_VP, HierarchyLevel.STATE_WORKING, HierarchyLevel.STATE
         )
-
-        var deepestNodeId: String? = null
-        for (level in levelPriority) {
-            val candidate = rawEntitiesList.firstOrNull { entity ->
-                entity.level.equals(level.name, ignoreCase = true) &&
-                    entity.state.equals(location.state, ignoreCase = true) &&
-                    (location.district == null || entity.district.equals(location.district, ignoreCase = true) ||
-                        entity.district.isNullOrEmpty())
-            }
-            if (candidate != null) {
-                deepestNodeId = candidate.id
-                break
-            }
-        }
-
-        if (deepestNodeId != null) {
-            _uiState.update { it.copy(focusedNodeId = deepestNodeId) }
-        }
-
-        updateState()
-    }
-
-    // ── State Computation & Tree Layout Engine ───────────────────────
-
-    private fun updateState() {
-        val query = _uiState.value.searchQuery.trim().lowercase()
-        val levelFilter = _uiState.value.selectedLevelFilter
-        val expandedIds = _uiState.value.expandedNodeIds
-
-        val filteredEntities = rawEntitiesList.filter { entity ->
-            val matchesQuery = query.isEmpty() ||
-                    entity.holderName.lowercase().contains(query) ||
-                    entity.roleTitle.lowercase().contains(query) ||
-                    (entity.state?.lowercase()?.contains(query) == true) ||
-                    (entity.district?.lowercase()?.contains(query) == true)
-
-            val matchesLevel = levelFilter == null ||
-                    entity.level.equals(levelFilter.name, ignoreCase = true)
-
-            matchesQuery && matchesLevel
-        }
-
-        val (roots, flattened) = calculateVirtualCanvasLayout(filteredEntities, expandedIds)
-        val geoData = calculateStateGeoData(rawEntitiesList)
-
-        _uiState.update {
-            it.copy(
-                rootNodes = roots,
-                allFlattenedNodes = flattened,
-                stateGeoDataList = geoData,
-                totalLeadersCount = rawEntitiesList.size,
-                isLoading = false
-            )
-        }
     }
 
     private fun getLeaderPhotoUrl(name: String): String? {
@@ -276,118 +308,6 @@ class PartyStructureViewModel @Inject constructor(
             name.contains("Santhosh", true) -> null // not fetched image
             else -> null
         }
-    }
-
-    /**
-     * Dynamic node height based on actual content and depth.
-     * Does NOT use a fixed huge gap — adapts to subtree properties.
-     */
-    private fun getNodeHeight(depth: Int, childCount: Int): Float {
-        val cardHeight = 110f
-        // Level-appropriate base spacing — moderate, not excessive
-        val baseSpacing = when {
-            depth == 0 -> 60f  // national → state
-            depth <= 2 -> 50f  // state → district
-            depth <= 5 -> 42f  // district → taluka
-            else -> 36f        // local/ward/booth
-        }
-        // Small extra padding when a node has many children to avoid line congestion
-        val childPadding = (childCount * 1.2f).coerceAtMost(12f)
-        return cardHeight + baseSpacing + childPadding
-    }
-
-    /** Computes tree layout positioning nodes with proper X/Y spacing on the canvas */
-    private fun calculateVirtualCanvasLayout(
-        entities: List<PartyNodeEntity>,
-        expandedIds: Set<String>
-    ): Pair<List<PartyTreeNode>, List<PartyTreeNode>> {
-        val rootEntities = entities.filter { it.parentId == null || entities.none { p -> p.id == it.parentId } }
-        val flattenedList = mutableListOf<PartyTreeNode>()
-
-        val nodeWidth = 280f
-        val siblingGap = 40f
-        var currentRootX = 100f
-
-        fun layoutSubtree(
-            entity: PartyNodeEntity,
-            depth: Int,
-            startX: Float,
-            nodeY: Float
-        ): Pair<PartyTreeNode, Float> {
-            val childrenEntities = entities.filter { it.parentId == entity.id }
-                .sortedBy { HierarchyLevel.fromString(it.level).tier }
-            val isExpanded = expandedIds.contains(entity.id) ||
-                    expandedIds.isEmpty() ||
-                    _uiState.value.searchQuery.isNotEmpty()
-
-            val laidOutChildren = mutableListOf<PartyTreeNode>()
-            var childX = startX
-
-            val levelEnum = HierarchyLevel.fromString(entity.level)
-            val currentLevelSpacing = getNodeHeight(depth, childrenEntities.size)
-
-            if (isExpanded && childrenEntities.isNotEmpty()) {
-                childrenEntities.forEach { childEntity ->
-                    val childY = nodeY + currentLevelSpacing
-                    val (childNode, nextX) = layoutSubtree(childEntity, depth + 1, childX, childY)
-                    laidOutChildren.add(childNode)
-                    childX = nextX + siblingGap
-                }
-            }
-
-            val subtreeWidth = if (laidOutChildren.isNotEmpty()) {
-                (childX - startX - siblingGap).coerceAtLeast(nodeWidth)
-            } else {
-                nodeWidth
-            }
-
-            val nodeX = if (laidOutChildren.isNotEmpty()) {
-                startX + (subtreeWidth - nodeWidth) / 2f
-            } else {
-                startX
-            }
-
-            // Photos only for top 2 tiers (national-level positions)
-            val photoUrl = if (levelEnum.tier <= 2) getLeaderPhotoUrl(entity.holderName) else null
-
-            // Build jurisdiction label for connection lines
-            val jurisdictionLabel = when {
-                !entity.district.isNullOrEmpty() -> entity.district
-                !entity.state.isNullOrEmpty() -> entity.state
-                else -> ""
-            } ?: ""
-
-            val partyNode = PartyTreeNode(
-                id = entity.id,
-                partyName = entity.partyName,
-                level = levelEnum,
-                parentId = entity.parentId,
-                roleTitle = entity.roleTitle,
-                holderName = entity.holderName,
-                state = entity.state,
-                district = entity.district,
-                jurisdictionLabel = jurisdictionLabel,
-                photoEmoji = getLeaderEmoji(entity.holderName),
-                photoUrl = photoUrl,
-                children = laidOutChildren,
-                isExpanded = isExpanded,
-                verificationStatus = if (entity.holderName.contains("Not yet fetched", ignoreCase = true))
-                    VerificationStatus.NotYetFetched else VerificationStatus.Verified,
-                canvasX = nodeX,
-                canvasY = nodeY
-            )
-
-            flattenedList.add(partyNode)
-            return partyNode to (startX + subtreeWidth)
-        }
-
-        val rootNodes = rootEntities.map { rootEntity ->
-            val (rootNode, nextX) = layoutSubtree(rootEntity, depth = 0, startX = currentRootX, nodeY = 80f)
-            currentRootX = nextX + 80f
-            rootNode
-        }
-
-        return rootNodes to flattenedList
     }
 
     private fun calculateStateGeoData(entities: List<PartyNodeEntity>): List<StateGeoData> {
@@ -411,7 +331,6 @@ class PartyStructureViewModel @Inject constructor(
 
             StateGeoData(
                 stateName = stateName,
-                stateCode = getStateCode(stateName),
                 leaderCount = stateEntities.size,
                 districtCount = districtGroups.size.coerceAtLeast(1),
                 topLeaderName = topLeader.holderName,
@@ -420,36 +339,6 @@ class PartyStructureViewModel @Inject constructor(
                 districts = districts
             )
         }.sortedByDescending { it.leaderCount }
-    }
-
-    private fun getStateCode(state: String): String = when (state.lowercase()) {
-        "maharashtra" -> "MH"; "delhi" -> "DL"; "karnataka" -> "KA"
-        "tamil nadu" -> "TN"; "west bengal" -> "WB"; "gujarat" -> "GJ"
-        "uttar pradesh" -> "UP"; "rajasthan" -> "RJ"; "madhya pradesh" -> "MP"
-        "bihar" -> "BR"; "andhra pradesh" -> "AP"; "telangana" -> "TS"
-        "kerala" -> "KL"; "odisha" -> "OD"; "jharkhand" -> "JH"
-        "haryana" -> "HR"; "punjab" -> "PB"; "himachal pradesh" -> "HP"
-        "uttarakhand" -> "UK"; "assam" -> "AS"; "chhattisgarh" -> "CG"
-        "goa" -> "GA"; "tripura" -> "TR"; "meghalaya" -> "ML"
-        "manipur" -> "MN"; "nagaland" -> "NL"; "arunachal pradesh" -> "AR"
-        "sikkim" -> "SK"; "mizoram" -> "MZ"; "jammu & kashmir" -> "JK"
-        "ladakh" -> "LA"; "chandigarh" -> "CH"; "puducherry" -> "PY"
-        else -> state.take(2).uppercase()
-    }
-
-    private fun getLeaderEmoji(name: String): String {
-        return when {
-            name.contains("Modi", true) -> "🇮🇳"
-            name.contains("Nadda", true) -> "🪷"
-            name.contains("Kharge", true) -> "✋"
-            name.contains("Gandhi", true) -> "🌾"
-            name.contains("Kejriwal", true) -> "👓"
-            name.contains("Pawar", true) -> "⏰"
-            name.contains("Banerjee", true) || name.contains("Mamata", true) -> "🌱"
-            name.contains("Stalin", true) -> "☀️"
-            name.contains("Not yet", true) -> "❓"
-            else -> "👨‍💼"
-        }
     }
 
     private fun generatePoliticianProfile(node: PartyTreeNode): PoliticianProfile {
@@ -550,7 +439,7 @@ class PartyStructureViewModel @Inject constructor(
             level = node.level,
             state = node.state,
             district = node.district,
-            photoEmoji = node.photoEmoji,
+            photoUrl = node.photoUrl,
             bio = bio,
             education = education,
             timeline = milestones,
@@ -564,19 +453,6 @@ class PartyStructureViewModel @Inject constructor(
     }
 
     // ── Seed Data Generator — Full Position-Driven Hierarchy ─────────
-
-    private suspend fun seedMockPartyData() {
-        val allSeeds = mutableListOf<PartyNodeEntity>()
-        listOf("BJP", "INC", "AAP", "NCP", "TMC", "DMK").forEach { party ->
-            allSeeds.addAll(generateSeedNodes(party))
-        }
-        partyNodeDao.replaceAll(allSeeds)
-    }
-
-    private suspend fun seedMockPartyDataForParty(party: String) {
-        val seeds = generateSeedNodes(party)
-        partyNodeDao.insertAll(seeds)
-    }
 
     /**
      * Generates full position-driven hierarchy for each party based on actual
@@ -774,42 +650,42 @@ class PartyStructureViewModel @Inject constructor(
             // NCP — Nationalist Congress Party (Sharad Pawar faction)
             // Strong in Maharashtra. District/cooperative-level organization.
             // ─────────────────────────────────────────────────────────────────
-            "NCP" -> {
-                val n1 = "NCP_NAT_PRES"; nodes.add(PartyNodeEntity(n1, "NCP", "NATIONAL", null, "National President", "Sharad Pawar", null, null, date))
+            "NCP(SP)" -> {
+                val n1 = "NCP_NAT_PRES"; nodes.add(PartyNodeEntity(n1, "NCP(SP)", "NATIONAL", null, "National President", "Sharad Pawar", null, null, date))
                 // Working President
-                val n2 = "NCP_NAT_WP"; nodes.add(PartyNodeEntity(n2, "NCP", "NATIONAL_WORKING", n1, "Working President", NYF, null, null, date))
+                val n2 = "NCP_NAT_WP"; nodes.add(PartyNodeEntity(n2, "NCP(SP)", "NATIONAL_WORKING", n1, "Working President", NYF, null, null, date))
                 // National Vice Presidents
-                nodes.add(PartyNodeEntity("NCP_NAT_VP1", "NCP", "NATIONAL_VP", n1, "National Vice President", "Praful Patel", null, null, date))
-                nodes.add(PartyNodeEntity("NCP_NAT_VP2", "NCP", "NATIONAL_VP", n1, "National Vice President", NYF, null, null, date))
+                nodes.add(PartyNodeEntity("NCP_NAT_VP1", "NCP(SP)", "NATIONAL_VP", n1, "National Vice President", "Praful Patel", null, null, date))
+                nodes.add(PartyNodeEntity("NCP_NAT_VP2", "NCP(SP)", "NATIONAL_VP", n1, "National Vice President", NYF, null, null, date))
                 // GS Organisation
-                val n3 = "NCP_NAT_GS_ORG"; nodes.add(PartyNodeEntity(n3, "NCP", "NATIONAL_GS_ORG", n1, "General Secretary (Organisation)", NYF, null, null, date))
+                val n3 = "NCP_NAT_GS_ORG"; nodes.add(PartyNodeEntity(n3, "NCP(SP)", "NATIONAL_GS_ORG", n1, "General Secretary (Organisation)", NYF, null, null, date))
                 // General Secretaries
-                nodes.add(PartyNodeEntity("NCP_NAT_GS1", "NCP", "NATIONAL_GS", n1, "National General Secretary", "Sunil Tatkare", null, null, date))
-                nodes.add(PartyNodeEntity("NCP_NAT_GS2", "NCP", "NATIONAL_GS", n1, "National General Secretary", NYF, null, null, date))
+                nodes.add(PartyNodeEntity("NCP_NAT_GS1", "NCP(SP)", "NATIONAL_GS", n1, "National General Secretary", "Sunil Tatkare", null, null, date))
+                nodes.add(PartyNodeEntity("NCP_NAT_GS2", "NCP(SP)", "NATIONAL_GS", n1, "National General Secretary", NYF, null, null, date))
                 // Treasurer
-                nodes.add(PartyNodeEntity("NCP_NAT_TREAS", "NCP", "NATIONAL_TREASURER", n1, "National Treasurer", NYF, null, null, date))
+                nodes.add(PartyNodeEntity("NCP_NAT_TREAS", "NCP(SP)", "NATIONAL_TREASURER", n1, "National Treasurer", NYF, null, null, date))
 
                 // ── Maharashtra State Unit ────────────────────────────────
-                val mh = "NCP_STATE_MH"; nodes.add(PartyNodeEntity(mh, "NCP", "STATE", n1, "State President (Maharashtra)", "Jayant Patil", "Maharashtra", null, date))
-                nodes.add(PartyNodeEntity("NCP_STATE_MH_WP", "NCP", "STATE_WORKING", mh, "State Working President", NYF, "Maharashtra", null, date))
-                nodes.add(PartyNodeEntity("NCP_STATE_MH_VP1", "NCP", "STATE_VP", mh, "State Vice President", NYF, "Maharashtra", null, date))
-                nodes.add(PartyNodeEntity("NCP_STATE_MH_GS_ORG", "NCP", "STATE_GS_ORG", mh, "State GS (Organisation)", NYF, "Maharashtra", null, date))
-                nodes.add(PartyNodeEntity("NCP_STATE_MH_GS1", "NCP", "STATE_GS", mh, "State General Secretary", NYF, "Maharashtra", null, date))
-                nodes.add(PartyNodeEntity("NCP_STATE_MH_TREAS", "NCP", "STATE_TREASURER", mh, "State Treasurer", NYF, "Maharashtra", null, date))
+                val mh = "NCP_STATE_MH"; nodes.add(PartyNodeEntity(mh, "NCP(SP)", "STATE", n1, "State President (Maharashtra)", "Jayant Patil", "Maharashtra", null, date))
+                nodes.add(PartyNodeEntity("NCP_STATE_MH_WP", "NCP(SP)", "STATE_WORKING", mh, "State Working President", NYF, "Maharashtra", null, date))
+                nodes.add(PartyNodeEntity("NCP_STATE_MH_VP1", "NCP(SP)", "STATE_VP", mh, "State Vice President", NYF, "Maharashtra", null, date))
+                nodes.add(PartyNodeEntity("NCP_STATE_MH_GS_ORG", "NCP(SP)", "STATE_GS_ORG", mh, "State GS (Organisation)", NYF, "Maharashtra", null, date))
+                nodes.add(PartyNodeEntity("NCP_STATE_MH_GS1", "NCP(SP)", "STATE_GS", mh, "State General Secretary", NYF, "Maharashtra", null, date))
+                nodes.add(PartyNodeEntity("NCP_STATE_MH_TREAS", "NCP(SP)", "STATE_TREASURER", mh, "State Treasurer", NYF, "Maharashtra", null, date))
                 // Pune District (NCP stronghold)
-                val pune = "NCP_DIST_PUNE"; nodes.add(PartyNodeEntity(pune, "NCP", "DISTRICT", mh, "District President (Pune)", "Prashant Jagtap", "Maharashtra", "Pune", date))
-                nodes.add(PartyNodeEntity("NCP_DIST_PUNE_GS", "NCP", "DISTRICT_GS", pune, "District General Secretary", NYF, "Maharashtra", "Pune", date))
-                val tasgaon2 = "NCP_TALUKA_PUNE_1"; nodes.add(PartyNodeEntity(tasgaon2, "NCP", "TALUKA_MANDAL", pune, "Haveli Taluka President", NYF, "Maharashtra", "Pune", date))
-                nodes.add(PartyNodeEntity("NCP_GS_TALUKA_PUNE", "NCP", "TALUKA_GS", tasgaon2, "Haveli Taluka General Secretary", NYF, "Maharashtra", "Pune", date))
-                nodes.add(PartyNodeEntity("NCP_WARD_PUNE_1", "NCP", "WARD", tasgaon2, "Ward President (Karve Nagar)", NYF, "Maharashtra", "Pune", date))
-                nodes.add(PartyNodeEntity("NCP_BOOTH_PUNE_1", "NCP", "BOOTH", "NCP_WARD_PUNE_1", "Booth Committee President", NYF, "Maharashtra", "Pune", date))
+                val pune = "NCP_DIST_PUNE"; nodes.add(PartyNodeEntity(pune, "NCP(SP)", "DISTRICT", mh, "District President (Pune)", "Prashant Jagtap", "Maharashtra", "Pune", date))
+                nodes.add(PartyNodeEntity("NCP_DIST_PUNE_GS", "NCP(SP)", "DISTRICT_GS", pune, "District General Secretary", NYF, "Maharashtra", "Pune", date))
+                val tasgaon2 = "NCP_TALUKA_PUNE_1"; nodes.add(PartyNodeEntity(tasgaon2, "NCP(SP)", "TALUKA_MANDAL", pune, "Haveli Taluka President", NYF, "Maharashtra", "Pune", date))
+                nodes.add(PartyNodeEntity("NCP_GS_TALUKA_PUNE", "NCP(SP)", "TALUKA_GS", tasgaon2, "Haveli Taluka General Secretary", NYF, "Maharashtra", "Pune", date))
+                nodes.add(PartyNodeEntity("NCP_WARD_PUNE_1", "NCP(SP)", "WARD", tasgaon2, "Ward President (Karve Nagar)", NYF, "Maharashtra", "Pune", date))
+                nodes.add(PartyNodeEntity("NCP_BOOTH_PUNE_1", "NCP(SP)", "BOOTH", "NCP_WARD_PUNE_1", "Booth Committee President", NYF, "Maharashtra", "Pune", date))
                 // Mumbai District
-                val mum = "NCP_DIST_MUM"; nodes.add(PartyNodeEntity(mum, "NCP", "DISTRICT", mh, "District President (Mumbai)", NYF, "Maharashtra", "Mumbai", date))
-                nodes.add(PartyNodeEntity("NCP_DIST_MUM_GS", "NCP", "DISTRICT_GS", mum, "District General Secretary", NYF, "Maharashtra", "Mumbai", date))
-                nodes.add(PartyNodeEntity("NCP_TALUKA_MUM_1", "NCP", "TALUKA_MANDAL", mum, "Andheri Mandal President", NYF, "Maharashtra", "Mumbai", date))
+                val mum = "NCP_DIST_MUM"; nodes.add(PartyNodeEntity(mum, "NCP(SP)", "DISTRICT", mh, "District President (Mumbai)", NYF, "Maharashtra", "Mumbai", date))
+                nodes.add(PartyNodeEntity("NCP_DIST_MUM_GS", "NCP(SP)", "DISTRICT_GS", mum, "District General Secretary", NYF, "Maharashtra", "Mumbai", date))
+                nodes.add(PartyNodeEntity("NCP_TALUKA_MUM_1", "NCP(SP)", "TALUKA_MANDAL", mum, "Andheri Mandal President", NYF, "Maharashtra", "Mumbai", date))
                 // Satara District
-                val satara = "NCP_DIST_SATARA"; nodes.add(PartyNodeEntity(satara, "NCP", "DISTRICT", mh, "District President (Satara)", NYF, "Maharashtra", "Satara", date))
-                nodes.add(PartyNodeEntity("NCP_TALUKA_SATARA_1", "NCP", "TALUKA_MANDAL", satara, "Satara Taluka President", NYF, "Maharashtra", "Satara", date))
+                val satara = "NCP_DIST_SATARA"; nodes.add(PartyNodeEntity(satara, "NCP(SP)", "DISTRICT", mh, "District President (Satara)", NYF, "Maharashtra", "Satara", date))
+                nodes.add(PartyNodeEntity("NCP_TALUKA_SATARA_1", "NCP(SP)", "TALUKA_MANDAL", satara, "Satara Taluka President", NYF, "Maharashtra", "Satara", date))
             }
 
             // ─────────────────────────────────────────────────────────────────
@@ -855,7 +731,7 @@ class PartyStructureViewModel @Inject constructor(
             // Structured with Districts → Urban Local Bodies / Talukas → Wards
             // Also has organizational wings: Youth, Women, etc.
             // ─────────────────────────────────────────────────────────────────
-            else -> { // DMK
+            "DMK" -> {
                 val n1 = "DMK_NAT_PRES"; nodes.add(PartyNodeEntity(n1, "DMK", "NATIONAL", null, "Party President", "M. K. Stalin", null, null, date))
                 // General Secretary
                 val n2 = "DMK_NAT_GS"; nodes.add(PartyNodeEntity(n2, "DMK", "NATIONAL_GS", n1, "General Secretary", "Duraimurugan", null, null, date))
@@ -892,6 +768,8 @@ class PartyStructureViewModel @Inject constructor(
                 val py = "DMK_STATE_PY"; nodes.add(PartyNodeEntity(py, "DMK", "STATE", n2, "State Secretary (Puducherry)", NYF, "Puducherry", null, date))
                 nodes.add(PartyNodeEntity("DMK_DIST_PY_NORTH", "DMK", "DISTRICT", py, "District Secretary (Puducherry North)", NYF, "Puducherry", "Puducherry", date))
             }
+
+            else -> {}
         }
 
         return nodes

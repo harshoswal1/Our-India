@@ -1,97 +1,205 @@
 package com.ourindia.app.ui.partystructure
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FloatExponentialDecaySpec
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FitScreen
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.UnfoldLess
+import androidx.compose.material.icons.filled.UnfoldMore
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.drawText
-import coil3.compose.AsyncImage
 import com.ourindia.app.ui.theme.CivicColors
-import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.min
 
+private const val MIN_SCALE = 0.2f
+private const val MAX_SCALE = 1.6f
+// Below this zoom card text is under ~7sp on screen, so cards switch to a big-type overview.
+private const val COMPACT_BELOW = 0.55f
+
+/**
+ * Pannable, zoomable org chart of party units.
+ *
+ * Transform: screen = offset + contentPx * scale, pivot at the content's top-left.
+ * The previous canvas scaled about the layer centre while computing pans as if the
+ * pivot were top-left, so pinches drifted and "centre on node" missed its target.
+ */
 @Composable
 fun PartyHierarchyCanvas(
-    rootNodes: List<PartyTreeNode>,
-    allNodes: List<PartyTreeNode>,
-    partyMetadata: PartyMetadata,
+    chart: HierarchyChart,
+    partyColor: Color,
     focusedNodeId: String?,
+    focusRequest: Int,
     onNodeClicked: (PartyTreeNode) -> Unit,
-    onToggleExpand: (String) -> Unit,
-    modifier: Modifier = Modifier
+    onToggleUnit: (String) -> Unit,
+    onSetAllExpanded: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    /** Space reserved at the top for overlays (the search field). */
+    contentTopInset: Dp = 0.dp
 ) {
-    var scale by remember { mutableFloatStateOf(0.5f) }
-    var panOffset by remember { mutableStateOf(Offset(200f, 80f)) }
-    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current.density
+    val topInsetPx = with(LocalDensity.current) { contentTopInset.toPx() }
+    val scope = rememberCoroutineScope()
 
-    val density = androidx.compose.ui.platform.LocalDensity.current.density
-    val cardWidthPx = 220f * density
-    val cardHeightPx = 110f * density
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val motion = remember { arrayOfNulls<Job>(1) }
+    val compact by remember { derivedStateOf { scale < COMPACT_BELOW } }
+    var showHint by remember { mutableStateOf(true) }
 
-    var hasCenteredInitiallyKey by remember { mutableStateOf("") }
+    val rootId = chart.units.firstOrNull { it.unit.parentId == null }?.unit?.id
+    val focusedUnitId = focusedNodeId?.let { id -> chart.units.firstOrNull { p -> p.unit.members.any { it.id == id } }?.unit?.id }
+    val allExpanded = chart.units.none { it.collapsed }
 
-    // Initial centering of topmost node on viewport ready / party switch
-    LaunchedEffect(canvasSize, rootNodes, partyMetadata.name) {
-        if (canvasSize != IntSize.Zero && rootNodes.isNotEmpty() && hasCenteredInitiallyKey != partyMetadata.name) {
-            val rootNode = rootNodes.first()
-            scale = 0.5f
-            val nodePixelX = rootNode.canvasX * density
-            val nodePixelY = rootNode.canvasY * density
-            panOffset = Offset(
-                x = (canvasSize.width / 2f) - (nodePixelX + (cardWidthPx / 2f)) * scale,
-                y = (canvasSize.height / 2f) - (nodePixelY + (cardHeightPx / 2f)) * scale
-            )
-            hasCenteredInitiallyKey = partyMetadata.name
+    // Keep at least a strip of the chart on screen so it can't be flung into the void.
+    fun bounded(o: Offset, s: Float): Offset {
+        val keep = 96f * density
+        val w = chart.width * density * s
+        val h = chart.height * density * s
+        return Offset(
+            o.x.coerceIn(min(keep - w, viewport.width - keep), max(keep - w, viewport.width - keep)),
+            o.y.coerceIn(min(keep - h, viewport.height - keep), max(keep - h, viewport.height - keep))
+        )
+    }
+
+    fun animateTo(targetScale: Float, targetOffset: Offset) {
+        motion[0]?.cancel()
+        motion[0] = scope.launch {
+            val s0 = scale
+            val o0 = offset
+            animate(0f, 1f, animationSpec = tween(450, easing = FastOutSlowInEasing)) { t, _ ->
+                scale = s0 + (targetScale - s0) * t
+                offset = o0 + (targetOffset - o0) * t
+            }
         }
     }
 
-    // Auto pan ONLY if focusedNodeId changes — intentionally does NOT change scale.
-    // User's current zoom is preserved when navigating to a focused node.
-    LaunchedEffect(focusedNodeId, canvasSize) {
-        if (focusedNodeId != null && canvasSize != IntSize.Zero) {
-            val target = allNodes.firstOrNull { it.id == focusedNodeId }
-            if (target != null) {
-                // Do NOT set scale here — preserve user's current zoom
-                val nodePixelX = target.canvasX * density
-                val nodePixelY = target.canvasY * density
-                panOffset = Offset(
-                    x = (canvasSize.width / 2f) - (nodePixelX + (cardWidthPx / 2f)) * scale,
-                    y = (canvasSize.height / 2f) - (nodePixelY + (cardHeightPx / 2f)) * scale
-                )
+    fun zoomAround(pivot: Offset, targetScale: Float) {
+        val s = targetScale.coerceIn(MIN_SCALE, MAX_SCALE)
+        animateTo(s, bounded(pivot - (pivot - offset) * (s / scale), s))
+    }
+
+    fun fitAll() {
+        if (viewport == IntSize.Zero || chart.units.isEmpty()) return
+        val s = min(viewport.width / (chart.width * density), viewport.height / (chart.height * density))
+            .coerceIn(MIN_SCALE, 1f)
+        val w = chart.width * density * s
+        val h = chart.height * density * s
+        animateTo(s, Offset((viewport.width - w) / 2f, max(0f, (viewport.height - h) / 2f)))
+    }
+
+    /** Puts a unit (or one of its rows) at the upper-middle of the viewport. */
+    fun focusOn(unitId: String, nodeId: String?, animated: Boolean) {
+        val placed = chart.byId[unitId] ?: return
+        val s = scale.coerceIn(0.8f, 1.1f)
+        val row = placed.unit.members.indexOfFirst { it.id == nodeId }.coerceAtLeast(0)
+        val rowCenter = placed.y + ChartMetrics.HEADER_HEIGHT +
+            if (row == 0) ChartMetrics.HEAD_ROW_HEIGHT / 2f
+            else ChartMetrics.HEAD_ROW_HEIGHT + (row - 0.5f) * ChartMetrics.MEMBER_ROW_HEIGHT
+        val target = bounded(
+            Offset(
+                viewport.width / 2f - placed.centerX * density * s,
+                viewport.height * 0.4f - rowCenter * density * s
+            ),
+            s
+        )
+        if (animated) animateTo(s, target) else { scale = s; offset = target }
+    }
+
+    fun showRoot(id: String) {
+        val placed = chart.byId[id] ?: return
+        val s = (viewport.width / ((ChartMetrics.UNIT_WIDTH + 48f) * density)).coerceIn(0.6f, 1f)
+        scale = s
+        offset = Offset(viewport.width / 2f - placed.centerX * density * s, topInsetPx - placed.y * density * s)
+    }
+
+    // Initial placement per party, and every explicit locate request (search, map, GPS).
+    // Keyed on readiness, not size: the keyboard opening resizes the viewport and must
+    // not yank the chart back to the last focused node mid-search.
+    var positionedFor by remember { mutableStateOf<String?>(null) }
+    val ready = viewport != IntSize.Zero
+    LaunchedEffect(ready, rootId, focusRequest) {
+        if (!ready || rootId == null) return@LaunchedEffect
+        val firstPlacement = positionedFor != rootId
+        positionedFor = rootId
+        when {
+            focusedUnitId != null && (focusRequest > 0) -> focusOn(focusedUnitId, focusedNodeId, animated = !firstPlacement)
+            firstPlacement -> showRoot(rootId)
+        }
+    }
+
+    // Folding a unit re-centres every ancestor over its new set of children, which shifted
+    // the whole chart under the finger. Pin the unit the user touched to its old screen spot.
+    val anchor = remember { arrayOfNulls<String>(1) }
+    val previousChart = remember { arrayOfNulls<HierarchyChart>(1) }
+    SideEffect {
+        val prev = previousChart[0]
+        if (prev !== chart && prev != null) {
+            val id = anchor[0] ?: rootId
+            val before = id?.let { prev.byId[it] }
+            val after = id?.let { chart.byId[it] }
+            if (before != null && after != null) {
+                offset += Offset((before.x - after.x) * density * scale, (before.y - after.y) * density * scale)
             }
         }
+        previousChart[0] = chart
+        anchor[0] = null
+    }
+
+    LaunchedEffect(Unit) {
+        delay(5000)
+        showHint = false
     }
 
     Box(
@@ -99,537 +207,435 @@ fun PartyHierarchyCanvas(
             .fillMaxSize()
             .clipToBounds()
             .background(CivicColors.Background)
-            .onSizeChanged { canvasSize = it }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    // 0.15f allows zooming far out for large party hierarchies (15+ levels)
-                    scale = (scale * zoom).coerceIn(0.15f, 2.5f)
-                    panOffset += pan
+            .onSizeChanged { viewport = it }
+            .pointerInput(chart) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    motion[0]?.cancel()
+                    showHint = false
+                    val tracker = VelocityTracker()
+                    tracker.addPosition(down.uptimeMillis, down.position)
+                    var pastSlop = false
+                    var multiTouch = false
+                    var zoomSinceDown = 1f
+                    var panSinceDown = Offset.Zero
+                    do {
+                        val event = awaitPointerEvent()
+                        if (event.changes.any { it.isConsumed }) break
+                        if (event.changes.size > 1) multiTouch = true
+                        val zoomChange = event.calculateZoom()
+                        val panChange = event.calculatePan()
+                        if (!pastSlop) {
+                            zoomSinceDown *= zoomChange
+                            panSinceDown += panChange
+                            val zoomMotion = abs(1 - zoomSinceDown) * event.calculateCentroidSize(useCurrent = false)
+                            pastSlop = zoomMotion > viewConfiguration.touchSlop ||
+                                panSinceDown.getDistance() > viewConfiguration.touchSlop
+                        }
+                        if (pastSlop) {
+                            val centroid = event.calculateCentroid(useCurrent = false)
+                            val newScale = (scale * zoomChange).coerceIn(MIN_SCALE, MAX_SCALE)
+                            offset = bounded(centroid - (centroid - offset) * (newScale / scale) + panChange, newScale)
+                            scale = newScale
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                        event.changes.firstOrNull()?.let { tracker.addPosition(it.uptimeMillis, it.position) }
+                    } while (event.changes.any { it.pressed })
+
+                    if (pastSlop && !multiTouch) {
+                        val v = tracker.calculateVelocity()
+                        val speed = hypot(v.x, v.y)
+                        if (speed > 400f) {
+                            val dir = Offset(v.x / speed, v.y / speed)
+                            motion[0] = scope.launch {
+                                val start = offset
+                                animateDecay(0f, speed, FloatExponentialDecaySpec()) { dist, _ ->
+                                    offset = bounded(start + dir * dist, scale)
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onDoubleTap = { tapOffset ->
-                        // Double tap to reset or zoom in
-                        if (scale > 1.2f) {
-                            scale = 0.9f
-                            panOffset = Offset(200f, 80f)
-                        } else {
-                            scale = 1.3f
-                            panOffset = Offset(
-                                (canvasSize.width / 2f) - tapOffset.x,
-                                (canvasSize.height / 2f) - tapOffset.y
-                            )
-                        }
-                    }
+                    onDoubleTap = { p -> zoomAround(p, if (scale >= 1.2f) scale / 2f else scale * 2f) }
                 )
             }
     ) {
-        val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+        DotGrid(scale = { scale }, offset = { offset })
 
-        // Grid pattern background for canvas feel
-        CanvasGridBackground(scale = scale, panOffset = panOffset)
-
-        // Hierarchy Connection Lines (Drawn behind nodes)
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = panOffset.x
-                    translationY = panOffset.y
-                }
-        ) {
-            drawTreeConnectionLines(
-                nodes = allNodes,
-                partyColor = partyMetadata.color,
-                textMeasurer = textMeasurer
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = panOffset.x
-                    translationY = panOffset.y
-                }
-        ) {
-            allNodes.forEach { node ->
-                val isFocused = node.id == focusedNodeId
-                val nodeWidth = 220.dp
-                val nodeHeight = 110.dp
-
-                Box(
-                    modifier = Modifier
-                        .offset(x = node.canvasX.dp, y = node.canvasY.dp)
-                        .size(width = nodeWidth, height = nodeHeight)
-                ) {
-                    CanvasNodeCard(
-                        node = node,
-                        scale = scale,
-                        isFocused = isFocused,
-                        onNodeClick = { onNodeClicked(node) },
-                        onToggleExpand = { onToggleExpand(node.id) }
-                    )
+        if (chart.units.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .wrapContentSize(Alignment.TopStart, unbounded = true)
+                    .size(chart.width.dp, chart.height.dp)
+                    .graphicsLayer {
+                        transformOrigin = TransformOrigin(0f, 0f)
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    }
+            ) {
+                Connectors(
+                    chart = chart,
+                    highlightUnitId = focusedUnitId,
+                    highlightColor = partyColor,
+                    scale = { scale }
+                )
+                chart.units.forEach { placed ->
+                    key(placed.unit.id) {
+                        UnitCard(
+                            placed = placed,
+                            compact = compact,
+                            isFocusedUnit = placed.unit.id == focusedUnitId,
+                            focusedNodeId = focusedNodeId,
+                            partyColor = partyColor,
+                            onNodeClicked = onNodeClicked,
+                            onToggle = {
+                                anchor[0] = placed.unit.id
+                                onToggleUnit(placed.unit.id)
+                            },
+                            modifier = Modifier
+                                .offset(placed.x.dp, placed.y.dp)
+                                .size(ChartMetrics.UNIT_WIDTH.dp, placed.height.dp)
+                        )
+                    }
                 }
             }
         }
 
-        // Canvas Floating Control Overlay (Zoom In, Zoom Out, Reset, Info Badge)
-        CanvasControlsOverlay(
-            scale = scale,
-            onZoomIn = { scale = (scale * 1.2f).coerceAtMost(2.5f) },
-            onZoomOut = { scale = (scale / 1.2f).coerceAtLeast(0.15f) },
-            onResetView = {
-                if (rootNodes.isNotEmpty()) {
-                    val rootNode = rootNodes.first()
-                    val nodePixelX = rootNode.canvasX * density
-                    val nodePixelY = rootNode.canvasY * density
-                    panOffset = Offset(
-                        x = (canvasSize.width / 2f) - (nodePixelX + (cardWidthPx / 2f)) * scale,
-                        y = (canvasSize.height / 2f) - (nodePixelY + (cardHeightPx / 2f)) * scale
-                    )
-                } else {
-                    panOffset = Offset(180f * density, 80f * density)
+        AnimatedVisibility(
+            visible = showHint,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(16.dp)
+        ) {
+            Surface(shape = CircleShape, color = CivicColors.Navy.copy(alpha = 0.9f)) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Outlined.TouchApp, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Text("Pinch to zoom · drag to explore", style = MaterialTheme.typography.labelMedium, color = Color.White)
                 }
+            }
+        }
+
+        ChartControls(
+            allExpanded = allExpanded,
+            onZoomIn = { zoomAround(Offset(viewport.width / 2f, viewport.height / 2f), scale * 1.4f) },
+            onZoomOut = { zoomAround(Offset(viewport.width / 2f, viewport.height / 2f), scale / 1.4f) },
+            onFit = ::fitAll,
+            onToggleAll = {
+                anchor[0] = rootId
+                onSetAllExpanded(!allExpanded)
             },
-            totalNodes = allNodes.size,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
         )
-
-        // Subtle Canvas Tip Bar at Top
-        Surface(
-            color = CivicColors.Navy.copy(alpha = 0.85f),
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 10.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ZoomOutMap,
-                    contentDescription = null,
-                    tint = CivicColors.Saffron,
-                    modifier = Modifier.size(14.dp)
-                )
-                Text(
-                    text = "Pinch to Zoom • Drag to Pan Canvas • Tap Leader for Profile",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
     }
 }
 
-/** Subtle engineering grid background */
+/** Dot grid in screen space; tracks pan/zoom so the canvas reads as one surface. */
 @Composable
-private fun CanvasGridBackground(scale: Float, panOffset: Offset) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val gridSize = 40.dp.toPx() * scale
-        if (gridSize < 10f) return@Canvas
-
-        val startX = (panOffset.x % gridSize)
-        val startY = (panOffset.y % gridSize)
-        val gridColor = Color(0xFF0A1628).copy(alpha = 0.05f)
-
-        var x = startX
+private fun DotGrid(scale: () -> Float, offset: () -> Offset) {
+    Canvas(Modifier.fillMaxSize()) {
+        // Double the spacing as you zoom out so the dot count stays in the hundreds.
+        var step = 28.dp.toPx() * scale()
+        while (step < 20.dp.toPx()) step *= 2f
+        val o = offset()
+        val color = CivicColors.Navy.copy(alpha = 0.07f)
+        val r = 1.2.dp.toPx()
+        var x = o.x.mod(step)
         while (x < size.width) {
-            drawLine(
-                color = gridColor,
-                start = Offset(x, 0f),
-                end = Offset(x, size.height),
-                strokeWidth = 1f
-            )
-            x += gridSize
-        }
-
-        var y = startY
-        while (y < size.height) {
-            drawLine(
-                color = gridColor,
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1f
-            )
-            y += gridSize
+            var y = o.y.mod(step)
+            while (y < size.height) {
+                drawCircle(color, r, Offset(x, y))
+                y += step
+            }
+            x += step
         }
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTreeConnectionLines(
-    nodes: List<PartyTreeNode>,
-    partyColor: Color,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer
+/** Orthogonal elbow connectors: parent stem, a bus across the children, a drop to each. */
+@Composable
+private fun Connectors(
+    chart: HierarchyChart,
+    highlightUnitId: String?,
+    highlightColor: Color,
+    scale: () -> Float
 ) {
-    val nodeWidthPx = 220.dp.toPx()
-    val nodeHeightPx = 110.dp.toPx()
-
-    val nodeMap = nodes.associateBy { it.id }
-
-    nodes.forEach { child ->
-        if (child.parentId != null) {
-            val parent = nodeMap[child.parentId]
-            if (parent != null) {
-                val startX = parent.canvasX.dp.toPx() + (nodeWidthPx / 2f)
-                val startY = parent.canvasY.dp.toPx() + nodeHeightPx
-                val endX = child.canvasX.dp.toPx() + (nodeWidthPx / 2f)
-                val endY = child.canvasY.dp.toPx()
-
-                val path = Path().apply {
-                    moveTo(startX, startY)
-                    val midY = (startY + endY) / 2f
-                    cubicTo(
-                        startX, midY,
-                        endX, midY,
-                        endX, endY
-                    )
+    val highlightPath = remember(chart, highlightUnitId) {
+        generateSequence(highlightUnitId) { chart.byId[it]?.unit?.parentId }.toSet()
+    }
+    Canvas(Modifier.fillMaxSize()) {
+        val d = density
+        // Divide by zoom so lines stay ~1.5dp on screen instead of thinning to hairlines.
+        val base = 1.5.dp.toPx() / scale().coerceAtMost(1f)
+        val lineColor = CivicColors.Navy.copy(alpha = 0.22f)
+        chart.units.forEach { parent ->
+            if (parent.collapsed) return@forEach
+            val kids = parent.unit.childIds.mapNotNull { chart.byId[it] }
+            if (kids.isEmpty()) return@forEach
+            val px = parent.centerX * d
+            val py = parent.bottom * d
+            val busY = py + ChartMetrics.V_GAP * d / 2f
+            val onPath = parent.unit.id in highlightPath && highlightUnitId != parent.unit.id
+            drawLine(if (onPath) highlightColor else lineColor, Offset(px, py), Offset(px, busY), if (onPath) base * 1.6f else base, StrokeCap.Round)
+            drawLine(
+                lineColor,
+                Offset(min(px, kids.first().centerX * d), busY),
+                Offset(max(px, kids.last().centerX * d), busY),
+                base,
+                StrokeCap.Round
+            )
+            kids.forEach { kid ->
+                val kx = kid.centerX * d
+                val kidOnPath = kid.unit.id in highlightPath
+                if (kidOnPath) {
+                    drawLine(highlightColor, Offset(px, busY), Offset(kx, busY), base * 1.6f, StrokeCap.Round)
                 }
-
-                // Draw connecting bezier line (Opaque dashed connection matching component borders)
-                drawPath(
-                    path = path,
-                    color = CivicColors.Navy,
-                    style = Stroke(
-                        width = 1.8f,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
-                    )
-                )
-
-                // Calculate connection midpoint coordinates
-                val midX = (startX + endX) / 2f
-                val midY = (startY + endY) / 2f
-
-                // Label showing connection context — uses jurisdictionLabel which covers all tiers
-                val labelText = child.jurisdictionLabel.ifEmpty {
-                    when {
-                        child.level.tier <= 8 -> null // National-tier nodes don't need geographic labels
-                        !child.district.isNullOrEmpty() -> child.district
-                        !child.state.isNullOrEmpty() -> child.state
-                        else -> null
-                    }
-                }.takeIf { it?.isNotEmpty() == true }
-
-                if (!labelText.isNullOrEmpty()) {
-                    val textStyle = androidx.compose.ui.text.TextStyle(
-                        color = CivicColors.Navy.copy(alpha = 0.9f),
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    val textLayoutResult = textMeasurer.measure(
-                        text = labelText,
-                        style = textStyle
-                    )
-                    
-                    // Draw centered annotation label slightly offset horizontally so it doesn't collide
-                    drawText(
-                        textLayoutResult = textLayoutResult,
-                        topLeft = Offset(
-                            x = midX + 8f,
-                            y = midY - (textLayoutResult.size.height / 2f)
-                        )
-                    )
-                }
-
-                // Draw connector dot at connection points
-                drawCircle(
-                    color = partyColor,
-                    radius = 3.5f,
-                    center = Offset(startX, startY)
-                )
-                drawCircle(
-                    color = CivicColors.Navy.copy(alpha = 0.5f),
-                    radius = 3.5f,
-                    center = Offset(endX, endY)
+                drawLine(
+                    if (kidOnPath) highlightColor else lineColor,
+                    Offset(kx, busY),
+                    Offset(kx, kid.y * d),
+                    if (kidOnPath) base * 1.6f else base,
+                    StrokeCap.Round
                 )
             }
         }
     }
 }
 
-/** Level-of-Detail Node Card (adapts appearance based on canvas zoom level) */
 @Composable
-private fun CanvasNodeCard(
-    node: PartyTreeNode,
-    scale: Float,
-    isFocused: Boolean,
-    onNodeClick: () -> Unit,
-    onToggleExpand: () -> Unit
+private fun UnitCard(
+    placed: PlacedUnit,
+    compact: Boolean,
+    isFocusedUnit: Boolean,
+    focusedNodeId: String?,
+    partyColor: Color,
+    onNodeClicked: (PartyTreeNode) -> Unit,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val isNotFetched = node.holderName.contains("Not yet fetched", ignoreCase = true) ||
-                       node.holderName.contains("Leader data not yet available", ignoreCase = true)
-
-    val borderColor = if (isFocused) CivicColors.Saffron else if (isNotFetched) CivicColors.Navy.copy(alpha = 0.25f) else CivicColors.Navy
-    val borderWidth = if (isFocused) 3.dp else 1.5.dp
-
-    Card(
-        modifier = Modifier
-            .fillMaxSize()
-            .shadow(if (isFocused) 10.dp else 3.dp, RoundedCornerShape(10.dp))
-            .border(borderWidth, borderColor, RoundedCornerShape(10.dp))
-            .clickable { onNodeClick() },
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isFocused) Color(0xFFFFF8E7) else if (isNotFetched) Color(0xFFF5F5F5) else Color.White
-        )
+    val unit = placed.unit
+    val levelColor = unit.level.badgeColor
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = CivicColors.Surface,
+        border = if (isFocusedUnit) BorderStroke(2.dp, partyColor) else BorderStroke(1.dp, CivicColors.Outline),
+        shadowElevation = if (isFocusedUnit) 6.dp else 1.dp,
+        modifier = modifier
     ) {
-        // High & Medium Detail Mode (Normal to zoomed in)
-        if (scale >= 0.55f) {
-            Column(
+        Column {
+            // Header
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .fillMaxWidth()
+                    .height(ChartMetrics.HEADER_HEIGHT.dp)
+                    .background(levelColor.copy(alpha = 0.08f))
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top row: Level Badge & State/District
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Surface(
-                        color = if (isNotFetched) CivicColors.Navy.copy(alpha = 0.35f) else node.level.badgeColor,
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = node.level.name,
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-
-                    val loc = node.state ?: "National HQ"
+                Box(Modifier.size(8.dp).background(levelColor, CircleShape))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = unit.level.groupLabel.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = levelColor
+                )
+                if (unit.title != unit.level.groupLabel) {
                     Text(
-                        text = loc,
-                        fontSize = 10.sp,
-                        color = CivicColors.TextSecondary,
-                        fontWeight = FontWeight.Medium,
+                        text = "  ·  ${unit.title}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = CivicColors.Navy,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                Text(
+                    text = "${unit.members.size} ${if (unit.members.size == 1) "post" else "posts"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CivicColors.TextMuted
+                )
+            }
+
+            if (compact) {
+                // Overview: one big label in the space the rows would take.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = unit.title,
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CivicColors.Navy,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 34.sp,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-
-                // Middle: Photo Image (Level 1 & 2) or Emoji (Level 3+) & Leader Name
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    val isFirstTwoLevels = node.level.tier <= 2 // Show photos for top-tier national leaders only
-                    val photoUrl = node.photoUrl
-
-                    if (isFirstTwoLevels && !photoUrl.isNullOrEmpty() && !isNotFetched) {
-                        AsyncImage(
-                            model = photoUrl,
-                            contentDescription = node.holderName,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .border(1.dp, node.level.badgeColor, CircleShape),
-                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(
-                                    if (isNotFetched) CivicColors.Navy.copy(alpha = 0.08f) else node.level.badgeColor.copy(alpha = 0.15f),
-                                    CircleShape
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isNotFetched) CivicColors.Navy.copy(alpha = 0.2f) else node.level.badgeColor,
-                                    CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = if (isNotFetched) "❓" else node.photoEmoji, fontSize = 18.sp)
-                        }
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = node.holderName,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (isNotFetched) CivicColors.TextSecondary else CivicColors.Navy,
-                            fontStyle = if (isNotFetched) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = node.roleTitle,
-                            fontSize = 10.5.sp,
-                            color = CivicColors.OnSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                // Bottom row: Jurisdiction details & Tap action
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    if (node.district != null) {
-                        Text(
-                            text = "📍 ${node.district}",
-                            fontSize = 9.sp,
-                            color = if (isNotFetched) CivicColors.TextSecondary else CivicColors.Teal,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    } else {
-                        Text(
-                            text = "🇮🇳 All-India Mandate",
-                            fontSize = 9.sp,
-                            color = CivicColors.TextSecondary
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (isNotFetched) "Pending" else "View",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isNotFetched) CivicColors.TextSecondary else CivicColors.Saffron
-                        )
-                        if (!isNotFetched) {
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = CivicColors.Saffron,
-                                modifier = Modifier.size(12.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            // Low Zoom LoD: Compact Overview Badge
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(6.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Surface(
-                    color = if (isNotFetched) CivicColors.Navy.copy(alpha = 0.3f) else node.level.badgeColor,
-                    shape = CircleShape,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = if (isNotFetched) "?" else node.holderName.take(2).uppercase(),
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = node.holderName,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isNotFetched) CivicColors.TextSecondary else CivicColors.Navy,
-                    fontStyle = if (isNotFetched) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
+            } else {
+                HeadRow(
+                    node = unit.head,
+                    highlighted = unit.head.id == focusedNodeId,
+                    onClick = { onNodeClicked(unit.head) }
                 )
+                unit.members.drop(1).forEach { member ->
+                    MemberRow(
+                        node = member,
+                        highlighted = member.id == focusedNodeId,
+                        onClick = { onNodeClicked(member) }
+                    )
+                }
+                if (unit.childIds.isEmpty()) Spacer(Modifier.height(ChartMetrics.BOTTOM_PADDING.dp))
+            }
+
+            if (unit.childIds.isNotEmpty()) {
+                HorizontalDivider(color = CivicColors.Outline)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(ChartMetrics.FOOTER_HEIGHT.dp - 1.dp)
+                        .clickable(onClick = onToggle)
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    val n = unit.childIds.size
+                    Text(
+                        text = if (placed.collapsed) "Show $n ${if (n == 1) "unit" else "units"} below" else "Hide units below",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = CivicColors.SaffronDeep
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (placed.collapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
+                        contentDescription = null,
+                        tint = CivicColors.SaffronDeep,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
 }
 
-/** Floating Zoom Controls & Reset Button */
 @Composable
-private fun CanvasControlsOverlay(
-    scale: Float,
+private fun HeadRow(node: PartyTreeNode, highlighted: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(ChartMetrics.HEAD_ROW_HEIGHT.dp)
+            .background(if (highlighted) CivicColors.Saffron.copy(alpha = 0.10f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        PersonAvatar(node = node, size = 40.dp)
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = node.displayName,
+                style = MaterialTheme.typography.titleSmall,
+                fontSize = 15.sp,
+                color = if (node.isNotFetched) CivicColors.TextMuted else CivicColors.Navy,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = node.roleTitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = CivicColors.SaffronDeep,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun MemberRow(node: PartyTreeNode, highlighted: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(ChartMetrics.MEMBER_ROW_HEIGHT.dp)
+            .background(if (highlighted) CivicColors.Saffron.copy(alpha = 0.10f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        PersonAvatar(node = node, size = 28.dp)
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = node.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (node.isNotFetched) FontWeight.Normal else FontWeight.SemiBold,
+                color = if (node.isNotFetched) CivicColors.TextMuted else CivicColors.OnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = node.roleTitle,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Normal,
+                color = CivicColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChartControls(
+    allExpanded: Boolean,
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
-    onResetView: () -> Unit,
-    totalNodes: Int,
+    onFit: () -> Unit,
+    onToggleAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        shadowElevation = 6.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, CivicColors.Navy.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(16.dp),
+        color = CivicColors.Surface,
+        shadowElevation = 4.dp,
+        border = BorderStroke(1.dp, CivicColors.Outline),
         modifier = modifier
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-        ) {
-            IconButton(
-                onClick = onZoomOut,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Remove,
-                    contentDescription = "Zoom Out",
-                    tint = CivicColors.Navy,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Text(
-                text = "${(scale * 100).roundToInt()}%",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = CivicColors.Navy,
-                modifier = Modifier.width(42.dp),
-                textAlign = TextAlign.Center
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            ControlButton(Icons.Default.Add, "Zoom in", onZoomIn)
+            ControlButton(Icons.Default.Remove, "Zoom out", onZoomOut)
+            HorizontalDivider(Modifier.width(28.dp), color = CivicColors.Outline)
+            ControlButton(Icons.Default.FitScreen, "Fit whole chart", onFit)
+            ControlButton(
+                if (allExpanded) Icons.Default.UnfoldLess else Icons.Default.UnfoldMore,
+                if (allExpanded) "Fold to state level" else "Unfold every unit",
+                onToggleAll
             )
-
-            IconButton(
-                onClick = onZoomIn,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Zoom In",
-                    tint = CivicColors.Navy,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Divider(
-                modifier = Modifier
-                    .height(20.dp)
-                    .width(1.dp),
-                color = CivicColors.Navy.copy(alpha = 0.2f)
-            )
-
-            IconButton(
-                onClick = onResetView,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CenterFocusStrong,
-                    contentDescription = "Reset Canvas",
-                    tint = CivicColors.Saffron,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
         }
+    }
+}
+
+@Composable
+private fun ControlButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+        Icon(icon, contentDescription = label, tint = CivicColors.Navy, modifier = Modifier.size(22.dp))
     }
 }

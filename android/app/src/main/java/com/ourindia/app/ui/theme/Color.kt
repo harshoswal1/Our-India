@@ -2,46 +2,37 @@ package com.ourindia.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ── Civic Brutalism Palette ─────────────────────────────────────────
+// ── Civic palette: navy ink on warm paper, saffron as the single accent ──
 object CivicColors {
-    // Primary
-    val Navy = Color(0xFF0A1628)
+    // Brand
+    val Navy = Color(0xFF0F1E33)
     val Saffron = Color(0xFFE85D04)
-
-    // Functional
-    val CivicRed = Color(0xFFD90429)
+    // Saffron/teal are 3.3:1 on white — fine for fills and large type, too light
+    // for small text. The Deep variants clear 4.5:1 and are what body copy uses.
+    val SaffronDeep = Color(0xFFB54A04)
     val Teal = Color(0xFF2A9D8F)
+    val TealDeep = Color(0xFF1F7468)
+    val CivicRed = Color(0xFFC62828)
 
     // Surfaces
-    val Background = Color(0xFFF8F4EB)
+    val Background = Color(0xFFF7F5F0)
     val Surface = Color(0xFFFFFFFF)
-    val SurfaceVariant = Color(0xFFF0EDE5)
+    val SurfaceVariant = Color(0xFFF0EDE6)
+    val Outline = Color(0xFFE4DFD5)
+    val Water = Color(0xFFDDE7EE)
 
     // Text
     val OnPrimary = Color(0xFFFFFFFF)
-    val OnBackground = Color(0xFF1A1A1A)
-    val OnSurface = Color(0xFF2D2D2D)
-    val TextSecondary = Color(0xFF6B7280)
+    val OnBackground = Color(0xFF16202E)
+    val OnSurface = Color(0xFF2A3341)
+    val TextSecondary = Color(0xFF5B6472)
+    val TextMuted = Color(0xFF8A919C)
 
-    // Severity Map Markers
-    val SeverityCritical = Color(0xFFD90429)
-    val SeverityHigh = Color(0xFFE85D04)
-    val SeverityModerate = Color(0xFFF4A261)
-    val SeverityLow = Color(0xFF2A9D8F)
-    val SeverityInfo = Color(0xFF8ECAE6)
-
-    // Party Colors
+    // Party colors
     val BJP = Color(0xFFFF6B00)
-    val INC = Color(0xFF00BFFF)
+    val INC = Color(0xFF0FA3D8)
     val AAP = Color(0xFF0077B6)
     val NCP = Color(0xFF005F73)
     val TMC = Color(0xFF2A9D8F)
     val Others = Color(0xFF6B7280)
-
-    // Status Colors
-    val StatusSubmitted = Color(0xFF6366F1)
-    val StatusVerified = Color(0xFF3B82F6)
-    val StatusInProgress = Color(0xFFF59E0B)
-    val StatusResolved = Color(0xFF10B981)
-    val StatusRejected = Color(0xFFEF4444)
 }

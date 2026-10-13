@@ -1,9 +1,14 @@
 package com.ourindia.app.ui.partystructure
 
-import androidx.compose.animation.*
+import android.view.Gravity
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -11,580 +16,590 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.PersonSearch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.ourindia.app.data.geo.LocalGeographicResolver
 import com.ourindia.app.data.geo.ResolvedLocation
 import com.ourindia.app.ui.theme.CivicColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.maplibre.android.MapLibre
-import org.maplibre.android.camera.CameraPosition
-import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
+import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.android.style.expressions.Expression.literal
+import org.maplibre.android.style.expressions.Expression.upcase
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.PropertyFactory.*
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.Point
 
 /**
- * Political Map Explorer — Sub-Module 2
+ * Map tab: a state/district choropleth of the party's organisation.
  *
- * Renders a real MapLibre interactive India map as the primary exploration surface.
- * Geographic data drives political data selection.
- * Map → political context → politician profile → Find in Hierarchy flow is fully wired.
- *
- * Map layout:
- * - Top 55%: MapLibre interactive India map
- * - Bottom 45%: Political info for selected area (leaders, breadcrumbs)
+ * The map draws the bundled boundary files on its own minimal style instead of
+ * OpenFreeMap's street tiles. The tile style needed a network round-trip before any
+ * layer could exist, so offline the map stayed blank and long-press did nothing; and a
+ * street map can't show where a party is organised anyway. Only label glyphs are
+ * fetched — offline the labels drop out and everything else still works.
  */
 @Composable
 fun PartyMapExplorer(
     partyMetadata: PartyMetadata,
+    resolver: LocalGeographicResolver,
     stateGeoDataList: List<StateGeoData>,
+    allNodes: List<PartyTreeNode>,
     selectedState: String?,
     selectedDistrict: String?,
-    resolvedLocation: ResolvedLocation? = null,
+    resolvedLocation: ResolvedLocation?,
     onStateSelected: (String?) -> Unit,
     onDistrictSelected: (String?) -> Unit,
-    allNodes: List<PartyTreeNode>,
-    onPoliticianClicked: (PartyTreeNode) -> Unit,
-    onLocateInHierarchy: (String) -> Unit,
+    onPositionClicked: (PartyTreeNode) -> Unit,
     onMapLongPressed: (Double, Double) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val scope = rememberCoroutineScope()
 
-    val activeStateData = stateGeoDataList.firstOrNull {
-        it.stateName.equals(selectedState, ignoreCase = true)
-    }
+        // Panel rests at one of three heights: peek (header only), half, or nearly full.
+        val stops = with(density) { listOf(112.dp.toPx(), (maxHeight * 0.45f).toPx(), (maxHeight * 0.9f).toPx()) }
+        var panelPx by remember { mutableFloatStateOf(stops[1]) }
+        LaunchedEffect(stops[2]) { panelPx = panelPx.coerceIn(stops[0], stops[2]) }
 
-    // Filter politicians based on map geographic selection
-    val filteredLeaders = remember(selectedState, selectedDistrict, allNodes) {
-        allNodes.filter { node ->
-            if (selectedState == null) {
-                // When nothing selected, show national-level leaders only
-                node.level.tier <= 8
-            } else {
-                val matchesState = node.state.equals(selectedState, ignoreCase = true)
-                if (selectedDistrict != null) {
-                    matchesState && node.district.equals(selectedDistrict, ignoreCase = true)
-                } else {
-                    matchesState
-                }
-            }
-        }.sortedBy { it.level.tier }
-    }
-
-    // Map camera target — center on resolved location or selected state, fallback to India center
-    val mapCameraTarget = remember(resolvedLocation, selectedState) {
-        when {
-            resolvedLocation?.state != null -> getStateCenterLatLng(resolvedLocation.state)
-            selectedState != null -> getStateCenterLatLng(selectedState)
-            else -> LatLng(20.5937, 78.9629) // India center
+        fun settle(velocity: Float) {
+            val projected = panelPx - velocity * 0.15f
+            val target = stops.minBy { kotlin.math.abs(it - projected) }
+            scope.launch { animate(panelPx, target, animationSpec = tween(260)) { v, _ -> panelPx = v } }
         }
-    }
 
-    val mapZoom = remember(resolvedLocation, selectedState, selectedDistrict) {
-        when {
-            selectedDistrict != null -> 9.0
-            selectedState != null || resolvedLocation?.state != null -> 6.5
-            else -> 4.5
-        }
-    }
-
-    Column(modifier = modifier.fillMaxSize()) {
-        // ── Geographic Breadcrumb Navigation Bar ─────────────────────────
-        GeoBreadcrumbBar(
+        IndiaMap(
+            resolver = resolver,
+            partyColor = partyMetadata.color,
+            stateGeoDataList = stateGeoDataList,
             selectedState = selectedState,
             selectedDistrict = selectedDistrict,
-            resolvedLocation = resolvedLocation,
-            partyColor = partyMetadata.color,
-            onClearState = { onStateSelected(null); onDistrictSelected(null) },
-            onClearDistrict = { onDistrictSelected(null) }
+            pin = resolvedLocation,
+            // Fit selections into the map area left above a half-height panel.
+            bottomPaddingPx = { panelPx.coerceAtMost(stops[1]).toInt() },
+            onStateTapped = { if (!it.equals(selectedState, ignoreCase = true)) onStateSelected(it) },
+            onDistrictTapped = onDistrictSelected,
+            onLongPress = onMapLongPressed
         )
 
-        // ── Real MapLibre Map (top 50% of screen) ────────────────────────
-        Box(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.5f)
-                .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
+                .align(Alignment.TopStart)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            MapLibreMapView(
-                cameraTarget = mapCameraTarget,
-                zoom = mapZoom,
-                partyColor = partyMetadata.color,
-                stateGeoDataList = stateGeoDataList,
+            GeoBreadcrumb(
                 selectedState = selectedState,
-                resolvedLocation = resolvedLocation,
-                onStateSelected = onStateSelected,
-                onMapLongPressed = onMapLongPressed
+                selectedDistrict = selectedDistrict,
+                onIndia = { onStateSelected(null) },
+                onState = { onDistrictSelected(null) }
             )
-
-            // Map overlay: Party context badge
-            Surface(
-                color = CivicColors.Navy.copy(alpha = 0.88f),
-                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 12.dp, top = 12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(text = partyMetadata.symbolEmoji, fontSize = 14.sp)
-                    Text(
-                        text = "${partyMetadata.shortName} Political Geography",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
-
-            // State selector chips overlaid on map (quick-select popular states)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .padding(8.dp)
-            ) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(stateGeoDataList.take(12)) { stateData ->
-                        val isSelected = stateData.stateName.equals(selectedState, ignoreCase = true)
-                        Surface(
-                            onClick = {
-                                if (isSelected) onStateSelected(null) else onStateSelected(stateData.stateName)
-                            },
-                            color = if (isSelected) partyMetadata.color else Color.White.copy(alpha = 0.92f),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text(
-                                text = stateData.stateCode,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.White else CivicColors.Navy,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                            )
-                        }
-                    }
-                }
-            }
+            PresenceLegend(partyMetadata.color)
         }
 
-        // ── Political Info Panel for selected area (bottom 50%) ──────────
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.5f)
-                .background(CivicColors.Background),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // Context header
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.5.dp, CivicColors.Navy, RoundedCornerShape(10.dp)),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = when {
-                                    selectedDistrict != null -> "📍 $selectedDistrict, $selectedState"
-                                    selectedState != null -> "📍 $selectedState"
-                                    resolvedLocation?.state != null -> "📍 ${resolvedLocation.state} (Your Location)"
-                                    else -> "🇮🇳 National Level — ${partyMetadata.shortName}"
-                                },
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = CivicColors.Navy
-                            )
-                            Text(
-                                text = "${filteredLeaders.size} organizational positions • ${
-                                    filteredLeaders.count { !it.isNotFetched }
-                                } verified",
-                                fontSize = 11.sp,
-                                color = CivicColors.TextSecondary
-                            )
-                        }
-
-                        if (activeStateData != null) {
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "${activeStateData.leaderCount}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp,
-                                    color = partyMetadata.color
-                                )
-                                Text(
-                                    text = "Positions",
-                                    fontSize = 10.sp,
-                                    color = CivicColors.TextSecondary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // District drill-down chips (shown when state selected)
-            if (selectedState != null && activeStateData != null && activeStateData.districts.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Drill down to district:",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = CivicColors.Navy,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(activeStateData.districts) { district ->
-                            val isSelected = district.districtName.equals(selectedDistrict, ignoreCase = true)
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    if (isSelected) onDistrictSelected(null)
-                                    else onDistrictSelected(district.districtName)
-                                },
-                                label = {
-                                    Text(
-                                        district.districtName,
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = partyMetadata.color,
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Leader cards for the selected area
-            if (filteredLeaders.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("🔍", fontSize = 32.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "No positions recorded for this area yet",
-                                fontSize = 13.sp,
-                                color = CivicColors.TextSecondary,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-            } else {
-                items(filteredLeaders, key = { it.id }) { leader ->
-                    MapLeaderCard(
-                        node = leader,
-                        partyColor = partyMetadata.color,
-                        onCardClick = { onPoliticianClicked(leader) },
-                        onLocateInHierarchy = { onLocateInHierarchy(leader.id) }
-                    )
-                }
-            }
-        }
+        MapPanel(
+            height = with(density) { panelPx.toDp() },
+            party = partyMetadata,
+            stateGeoDataList = stateGeoDataList,
+            allNodes = allNodes,
+            selectedState = selectedState,
+            selectedDistrict = selectedDistrict,
+            onDrag = { delta -> panelPx = (panelPx - delta).coerceIn(stops[0], stops[2]) },
+            onDragStopped = ::settle,
+            onHandleTap = {
+                val target = if (panelPx > stops[1] + 1f) stops[1] else stops[2]
+                scope.launch { animate(panelPx, target, animationSpec = tween(260)) { v, _ -> panelPx = v } }
+            },
+            onStateSelected = onStateSelected,
+            onDistrictSelected = onDistrictSelected,
+            onPositionClicked = onPositionClicked,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
-// ── MapLibre AndroidView wrapper ──────────────────────────────────────────────
+// ── MapLibre ──────────────────────────────────────────────────────────────────
+
+private const val STATES_SRC = "states"
+private const val DISTRICTS_SRC = "districts"
+private const val PIN_SRC = "pin"
+private const val STATE_FILL = "state-fill"
+private const val STATE_LINE = "state-line"
+private const val STATE_SELECTED_LINE = "state-selected-line"
+private const val STATE_LABEL = "state-label"
+private const val DISTRICT_FILL = "district-fill"
+private const val DISTRICT_LINE = "district-line"
+private const val DISTRICT_SELECTED_LINE = "district-selected-line"
+private const val DISTRICT_LABEL = "district-label"
+private const val PIN_LAYER = "pin-layer"
+
+private val INDIA_BOUNDS = LatLngBounds.from(37.6, 97.6, 6.4, 68.0)
+private const val EMPTY_FC = """{"type":"FeatureCollection","features":[]}"""
+private val LABEL_FONT = arrayOf("Noto Sans Regular")
+private val LAND = Color(0xFFFBFAF7)
+private val STYLE_JSON = """
+    {"version":8,"name":"our-india",
+     "glyphs":"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+     "sources":{},
+     "layers":[{"id":"water","type":"background","paint":{"background-color":"#DDE7EE"}}]}
+""".trimIndent()
 
 @Composable
-private fun MapLibreMapView(
-    cameraTarget: LatLng,
-    zoom: Double,
+private fun IndiaMap(
+    resolver: LocalGeographicResolver,
     partyColor: Color,
     stateGeoDataList: List<StateGeoData>,
     selectedState: String?,
-    resolvedLocation: ResolvedLocation?,
-    onStateSelected: (String?) -> Unit,
-    onMapLongPressed: (Double, Double) -> Unit,
-    modifier: Modifier = Modifier
+    selectedDistrict: String?,
+    pin: ResolvedLocation?,
+    bottomPaddingPx: () -> Int,
+    onStateTapped: (String) -> Unit,
+    onDistrictTapped: (String) -> Unit,
+    onLongPress: (Double, Double) -> Unit
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current.density
+    // TextureView mode: the default SurfaceView ignores Compose clipping and alpha, so
+    // rounded corners, the sliding panel and screen transitions showed the map through.
+    val mapView = remember {
+        MapLibre.getInstance(context)
+        MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true)).apply { onCreate(null) }
+    }
 
-    // MapLibre v11 style URL — OpenFreeMap liberty (free, no API key, attribution required)
-    val styleUrl = "https://tiles.openfreemap.org/styles/liberty"
-
-    // We hold the MapView reference in a remembered ref so we can call lifecycle methods
-    var mapViewRef: MapView? by remember { mutableStateOf(null) }
-
-    DisposableEffect(Unit) {
+    // The old wrapper never forwarded pause/resume, so the GL surface kept running in the
+    // background and could come back black. Mirror the host lifecycle instead.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, mapView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_STOP -> mapView.onStop()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
         onDispose {
-            mapViewRef?.onStop()
-            mapViewRef?.onDestroy()
-            mapViewRef = null
+            lifecycle.removeObserver(observer)
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
+            mapView.onDestroy()
         }
     }
 
-    AndroidView(
-        modifier = Modifier.fillMaxSize(),
-        factory = { ctx ->
-            MapLibre.getInstance(ctx)
-            MapView(ctx).also { mv ->
-                mapViewRef = mv
-                mv.onCreate(null)
-                mv.getMapAsync { map ->
-                    map.setStyle(styleUrl) {
-                        // Position camera over India or specified target
-                        val position = CameraPosition.Builder()
-                            .target(cameraTarget)
-                            .zoom(zoom)
-                            .build()
-                        map.cameraPosition = position
+    val latestState by rememberUpdatedState(selectedState)
+    val latestOnState by rememberUpdatedState(onStateTapped)
+    val latestOnDistrict by rememberUpdatedState(onDistrictTapped)
+    val latestOnLongPress by rememberUpdatedState(onLongPress)
+    val latestPadding by rememberUpdatedState(bottomPaddingPx)
 
-                        // Add a location dot if we have a resolved GPS state
-                        if (resolvedLocation?.state != null) {
-                            val loc = getStateCenterLatLng(resolvedLocation.state)
-                            safeAddLocationMarker(map, loc)
-                        }
-                    }
+    var map by remember { mutableStateOf<MapLibreMap?>(null) }
+    var style by remember { mutableStateOf<Style?>(null) }
 
-                    map.addOnMapLongClickListener { point ->
-                        safeAddLocationMarker(map, point) // Instant visual feedback
-                        onMapLongPressed(point.latitude, point.longitude)
-                        true
-                    }
-                }
-                mv.onStart()
-                mv.onResume()
+    LaunchedEffect(mapView) {
+        val statesJson = withContext(Dispatchers.IO) { resolver.readGeoJson(LocalGeographicResolver.STATES_ASSET) }
+        val districtsJson = withContext(Dispatchers.IO) { resolver.readGeoJson(LocalGeographicResolver.DISTRICTS_ASSET) }
+        mapView.getMapAsync { m ->
+            m.uiSettings.apply {
+                isRotateGesturesEnabled = false
+                isTiltGesturesEnabled = false
+                isCompassEnabled = false
+                logoGravity = Gravity.TOP or Gravity.END
+                attributionGravity = Gravity.TOP or Gravity.END
+                val gap = (12 * density).toInt()
+                setLogoMargins(0, gap, (48 * density).toInt(), 0)
+                setAttributionMargins(0, gap, gap, 0)
             }
-        },
-        update = { mv ->
-            mv.getMapAsync { map ->
-                val position = CameraPosition.Builder()
-                    .target(cameraTarget)
-                    .zoom(zoom)
-                    .build()
-                map.animateCamera(
-                    org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(position),
-                    800
-                )
+            m.setMinZoomPreference(2.5)
+            m.setMaxZoomPreference(11.0)
+            m.setLatLngBoundsForCameraTarget(INDIA_BOUNDS)
+            m.setStyle(Style.Builder().fromJson(STYLE_JSON)) { s ->
+                s.addSource(GeoJsonSource(STATES_SRC, statesJson ?: EMPTY_FC))
+                s.addSource(GeoJsonSource(DISTRICTS_SRC, districtsJson ?: EMPTY_FC))
+                s.addSource(GeoJsonSource(PIN_SRC, EMPTY_FC))
+                addBoundaryLayers(s)
+                val pad = (24 * density).toInt()
+                m.moveCamera(CameraUpdateFactory.newLatLngBounds(INDIA_BOUNDS, pad, (96 * density).toInt(), pad, latestPadding() + pad))
+
+                m.addOnMapClickListener { point ->
+                    val screen = m.projection.toScreenLocation(point)
+                    if (latestState != null) {
+                        m.queryRenderedFeatures(screen, DISTRICT_FILL).firstOrNull()
+                            ?.let { f -> runCatching { f.getStringProperty("district") }.getOrNull() }
+                            ?.let { latestOnDistrict(it); return@addOnMapClickListener true }
+                    }
+                    m.queryRenderedFeatures(screen, STATE_FILL).firstOrNull()
+                        ?.let { f -> runCatching { f.getStringProperty("state") }.getOrNull() }
+                        ?.let(latestOnState)
+                    true
+                }
+                m.addOnMapLongClickListener { point ->
+                    s.getSourceAs<GeoJsonSource>(PIN_SRC)?.setGeoJson(Point.fromLngLat(point.longitude, point.latitude))
+                    latestOnLongPress(point.latitude, point.longitude)
+                    true
+                }
+                map = m
+                style = s
             }
         }
+    }
+
+    // Choropleth: tint each state by how much of the party's structure sits there.
+    LaunchedEffect(style, stateGeoDataList, partyColor) {
+        val s = style ?: return@LaunchedEffect
+        val stops = stateGeoDataList.map {
+            Expression.stop(it.stateName.uppercase(), Expression.color(lerp(LAND, partyColor, 0.25f + 0.55f * it.representationScore).toArgb()))
+        }
+        val fill = if (stops.isEmpty()) Expression.color(LAND.toArgb())
+        else Expression.match(upcase(get("state")), Expression.color(LAND.toArgb()), *stops.toTypedArray())
+        s.getLayerAs<FillLayer>(STATE_FILL)?.setProperties(fillColor(fill))
+    }
+
+    // Selection: outline the chosen state, reveal its districts, highlight the district.
+    LaunchedEffect(style, selectedState, selectedDistrict, stateGeoDataList, partyColor) {
+        val s = style ?: return@LaunchedEffect
+        val st = selectedState?.uppercase()
+        val inState: Expression = if (st == null) literal(false) else Expression.eq(upcase(get("state")), literal(st))
+        val isDistrict: Expression = if (st == null || selectedDistrict == null) literal(false)
+        else Expression.all(inState, Expression.eq(upcase(get("district")), literal(selectedDistrict.uppercase())))
+
+        s.getLayerAs<LineLayer>(STATE_SELECTED_LINE)?.setFilter(inState)
+        s.getLayerAs<SymbolLayer>(STATE_LABEL)?.setFilter(if (st == null) literal(true) else Expression.not(inState))
+        s.getLayerAs<FillLayer>(STATE_FILL)?.setProperties(
+            fillOpacity(if (st == null) literal(1f) else Expression.switchCase(inState, literal(1f), literal(0.55f)))
+        )
+        s.getLayerAs<FillLayer>(DISTRICT_FILL)?.setFilter(inState)
+        s.getLayerAs<LineLayer>(DISTRICT_LINE)?.setFilter(inState)
+        s.getLayerAs<SymbolLayer>(DISTRICT_LABEL)?.setFilter(inState)
+        s.getLayerAs<LineLayer>(DISTRICT_SELECTED_LINE)?.setFilter(isDistrict)
+
+        val districts = stateGeoDataList.firstOrNull { it.stateName.equals(selectedState, ignoreCase = true) }?.districts.orEmpty()
+        val maxCount = districts.maxOfOrNull { it.leaderCount }?.coerceAtLeast(1) ?: 1
+        val stops = districts.map {
+            Expression.stop(it.districtName.uppercase(), Expression.color(lerp(LAND, partyColor, 0.3f + 0.5f * it.leaderCount / maxCount).toArgb()))
+        }
+        val base = Expression.color(LAND.toArgb())
+        val districtFill = if (stops.isEmpty()) base else Expression.match(upcase(get("district")), base, *stops.toTypedArray())
+        s.getLayerAs<FillLayer>(DISTRICT_FILL)?.setProperties(fillColor(districtFill))
+    }
+
+    LaunchedEffect(style, pin) {
+        val s = style ?: return@LaunchedEffect
+        val lat = pin?.latitude
+        val lng = pin?.longitude
+        val source = s.getSourceAs<GeoJsonSource>(PIN_SRC) ?: return@LaunchedEffect
+        if (lat != null && lng != null) source.setGeoJson(Point.fromLngLat(lng, lat))
+        else source.setGeoJson(FeatureCollection.fromJson(EMPTY_FC))
+    }
+
+    // Fly to the real polygon bounds. The old code aimed at a hard-coded state centre
+    // even for districts, so picking Pune zoomed to level 9 somewhere near Jalna.
+    LaunchedEffect(map, selectedState, selectedDistrict) {
+        val m = map ?: return@LaunchedEffect
+        val bounds = when {
+            selectedState == null -> INDIA_BOUNDS
+            else -> selectedDistrict?.let { resolver.boundsOf(selectedState, it) } ?: resolver.boundsOf(selectedState)
+        } ?: return@LaunchedEffect
+        val pad = (24 * density).toInt()
+        m.animateCamera(
+            CameraUpdateFactory.newLatLngBounds(bounds, pad, (96 * density).toInt(), pad, latestPadding() + pad),
+            700
+        )
+    }
+
+    AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+}
+
+private fun addBoundaryLayers(s: Style) {
+    val navy = CivicColors.Navy.toArgb()
+    val white = Color.White.toArgb()
+    s.addLayer(FillLayer(STATE_FILL, STATES_SRC).withProperties(fillColor(LAND.toArgb())))
+    s.addLayer(LineLayer(STATE_LINE, STATES_SRC).withProperties(lineColor(Color(0xFFB9C3CC).toArgb()), lineWidth(0.8f)))
+    s.addLayer(
+        FillLayer(DISTRICT_FILL, DISTRICTS_SRC).withFilter(literal(false)).withProperties(fillColor(LAND.toArgb()))
+    )
+    s.addLayer(
+        LineLayer(DISTRICT_LINE, DISTRICTS_SRC).withFilter(literal(false))
+            .withProperties(lineColor(Color(0xFFC9D1D8).toArgb()), lineWidth(0.6f))
+    )
+    s.addLayer(
+        LineLayer(STATE_SELECTED_LINE, STATES_SRC).withFilter(literal(false))
+            .withProperties(lineColor(navy), lineWidth(2f))
+    )
+    s.addLayer(
+        LineLayer(DISTRICT_SELECTED_LINE, DISTRICTS_SRC).withFilter(literal(false))
+            .withProperties(lineColor(CivicColors.Saffron.toArgb()), lineWidth(2.5f))
+    )
+    s.addLayer(
+        SymbolLayer(STATE_LABEL, STATES_SRC).withProperties(
+            textField(get("state")), textFont(LABEL_FONT), textSize(11f), textMaxWidth(6f),
+            textColor(CivicColors.Navy.copy(alpha = 0.75f).toArgb()), textHaloColor(white), textHaloWidth(1.4f)
+        )
+    )
+    s.addLayer(
+        SymbolLayer(DISTRICT_LABEL, DISTRICTS_SRC).withFilter(literal(false)).withProperties(
+            textField(get("district")), textFont(LABEL_FONT), textSize(10f), textMaxWidth(6f),
+            textColor(CivicColors.TextSecondary.toArgb()), textHaloColor(white), textHaloWidth(1.2f)
+        )
+    )
+    s.addLayer(
+        CircleLayer(PIN_LAYER, PIN_SRC).withProperties(
+            circleRadius(7f), circleColor(CivicColors.Saffron.toArgb()),
+            circleStrokeWidth(3f), circleStrokeColor(white)
+        )
     )
 }
 
-private fun safeAddLocationMarker(map: MapLibreMap, latLng: LatLng) {
-    try {
-        val style = map.style ?: return
-        // Remove existing marker if present (avoid duplicate sources)
-        style.removeLayer("location-layer")
-        style.removeSource("location-source")
-
-        val geoJsonSource = org.maplibre.android.style.sources.GeoJsonSource(
-            "location-source",
-            "{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[${latLng.longitude},${latLng.latitude}]}}"
-        )
-        style.addSource(geoJsonSource)
-        style.addLayer(
-            org.maplibre.android.style.layers.CircleLayer("location-layer", "location-source").apply {
-                setProperties(
-                    org.maplibre.android.style.layers.PropertyFactory.circleRadius(9f),
-                    org.maplibre.android.style.layers.PropertyFactory.circleColor("#E85D04"),
-                    org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth(2.5f),
-                    org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor("#FFFFFF"),
-                    org.maplibre.android.style.layers.PropertyFactory.circleOpacity(0.92f)
-                )
-            }
-        )
-    } catch (e: Exception) {
-        // Style not yet ready or layer already added — ignore safely
-    }
-}
-
-// ── Geographic center lookup for states ──────────────────────────────────────
-
-private fun getStateCenterLatLng(state: String): LatLng = when (state.lowercase().trim()) {
-    "jammu & kashmir", "j&k" -> LatLng(34.0, 76.5)
-    "ladakh" -> LatLng(34.2, 77.6)
-    "himachal pradesh" -> LatLng(31.9, 77.1)
-    "punjab" -> LatLng(31.1, 75.3)
-    "chandigarh" -> LatLng(30.7, 76.8)
-    "haryana" -> LatLng(29.0, 76.1)
-    "delhi" -> LatLng(28.65, 77.2)
-    "uttarakhand" -> LatLng(30.0, 79.0)
-    "uttar pradesh" -> LatLng(26.8, 80.9)
-    "rajasthan" -> LatLng(27.0, 74.2)
-    "madhya pradesh" -> LatLng(23.5, 77.8)
-    "gujarat" -> LatLng(22.2, 71.5)
-    "maharashtra" -> LatLng(19.7, 75.7)
-    "chhattisgarh" -> LatLng(21.3, 81.9)
-    "jharkhand" -> LatLng(23.6, 85.3)
-    "odisha" -> LatLng(20.9, 85.1)
-    "west bengal" -> LatLng(23.5, 87.9)
-    "bihar" -> LatLng(25.7, 85.4)
-    "sikkim" -> LatLng(27.5, 88.5)
-    "assam" -> LatLng(26.2, 92.9)
-    "arunachal pradesh" -> LatLng(28.2, 94.7)
-    "nagaland" -> LatLng(26.2, 94.5)
-    "manipur" -> LatLng(24.7, 93.9)
-    "mizoram" -> LatLng(23.2, 92.8)
-    "tripura" -> LatLng(23.9, 91.7)
-    "meghalaya" -> LatLng(25.5, 91.4)
-    "andhra pradesh" -> LatLng(15.9, 80.0)
-    "telangana" -> LatLng(17.4, 79.1)
-    "karnataka" -> LatLng(15.3, 75.7)
-    "kerala" -> LatLng(10.8, 76.3)
-    "tamil nadu" -> LatLng(11.1, 78.7)
-    "puducherry" -> LatLng(11.9, 79.8)
-    "goa" -> LatLng(15.3, 74.0)
-    "lakshadweep" -> LatLng(10.6, 72.6)
-    "andaman & nicobar islands" -> LatLng(11.7, 92.7)
-    else -> LatLng(20.5937, 78.9629) // Default: India center
-}
-
-// ── UI Components ─────────────────────────────────────────────────────────────
+// ── Overlays ─────────────────────────────────────────────────────────────────
 
 @Composable
-private fun GeoBreadcrumbBar(
+private fun GeoBreadcrumb(
     selectedState: String?,
     selectedDistrict: String?,
-    resolvedLocation: ResolvedLocation?,
-    partyColor: Color,
-    onClearState: () -> Unit,
-    onClearDistrict: () -> Unit
+    onIndia: () -> Unit,
+    onState: () -> Unit
 ) {
     Surface(
-        color = Color.White,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(
-                width = 1.dp,
-                color = CivicColors.Navy.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(8.dp)
-            )
+        shape = CircleShape,
+        color = CivicColors.Surface,
+        shadowElevation = 3.dp,
+        border = BorderStroke(1.dp, CivicColors.Outline)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Map,
-                contentDescription = null,
-                tint = CivicColors.Navy,
-                modifier = Modifier.size(16.dp)
-            )
-
-            // India (always)
-            Text(
-                text = "India",
-                fontSize = 12.sp,
-                fontWeight = if (selectedState == null) FontWeight.Bold else FontWeight.Normal,
-                color = if (selectedState == null) CivicColors.Navy else CivicColors.TextSecondary,
-                modifier = Modifier.clickable { onClearState() }
-            )
-
+            Crumb("India", active = selectedState == null, onClick = onIndia)
             if (selectedState != null) {
-                Text("›", color = CivicColors.TextSecondary, fontSize = 12.sp)
-                Surface(
-                    color = partyColor.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = selectedState,
-                            fontSize = 12.sp,
-                            fontWeight = if (selectedDistrict == null) FontWeight.Bold else FontWeight.Normal,
-                            color = CivicColors.Navy
+                CrumbSeparator()
+                Crumb(selectedState, active = selectedDistrict == null, onClick = onState)
+            }
+            if (selectedDistrict != null) {
+                CrumbSeparator()
+                Crumb(selectedDistrict, active = true, onClick = {})
+            }
+        }
+    }
+}
+
+@Composable
+private fun Crumb(label: String, active: Boolean, onClick: () -> Unit) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (active) CivicColors.Navy else CivicColors.TextSecondary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .widthIn(max = 140.dp)
+            .clip(CircleShape)
+            .clickable(enabled = !active, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+private fun CrumbSeparator() {
+    Icon(
+        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+        contentDescription = null,
+        tint = CivicColors.TextMuted,
+        modifier = Modifier.size(16.dp)
+    )
+}
+
+@Composable
+private fun PresenceLegend(partyColor: Color) {
+    Surface(shape = RoundedCornerShape(10.dp), color = CivicColors.Surface.copy(alpha = 0.92f)) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Fewer posts", style = MaterialTheme.typography.labelSmall, color = CivicColors.TextSecondary)
+            listOf(0f, 0.25f, 0.5f, 0.75f, 1f).forEach {
+                Box(
+                    Modifier
+                        .size(12.dp)
+                        .background(lerp(LAND, partyColor, 0.25f + 0.55f * it), RoundedCornerShape(3.dp))
+                )
+            }
+            Text("More", style = MaterialTheme.typography.labelSmall, color = CivicColors.TextSecondary)
+        }
+    }
+}
+
+// ── Info panel ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun MapPanel(
+    height: Dp,
+    party: PartyMetadata,
+    stateGeoDataList: List<StateGeoData>,
+    allNodes: List<PartyTreeNode>,
+    selectedState: String?,
+    selectedDistrict: String?,
+    onDrag: (Float) -> Unit,
+    onDragStopped: (Float) -> Unit,
+    onHandleTap: () -> Unit,
+    onStateSelected: (String?) -> Unit,
+    onDistrictSelected: (String?) -> Unit,
+    onPositionClicked: (PartyTreeNode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val stateData = stateGeoDataList.firstOrNull { it.stateName.equals(selectedState, ignoreCase = true) }
+    val positions = remember(allNodes, selectedState, selectedDistrict) {
+        allNodes.filter { n ->
+            when {
+                selectedState == null -> n.level.tier <= 8
+                !n.state.equals(selectedState, ignoreCase = true) -> false
+                selectedDistrict == null -> true
+                else -> n.district.equals(selectedDistrict, ignoreCase = true)
+            }
+        }.sortedWith(compareBy({ it.level.tier }, { it.isNotFetched }))
+    }
+
+    val title = selectedDistrict ?: selectedState ?: "All India"
+    val subtitle = when {
+        allNodes.isEmpty() -> "No structure data for ${party.shortName} yet"
+        selectedState == null -> "${party.shortName} organised in ${stateGeoDataList.size} states · ${allNodes.size} posts"
+        else -> "${positions.size} ${party.shortName} posts · ${positions.count { !it.isNotFetched }} with a named holder"
+    }
+
+    Surface(
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = CivicColors.Surface,
+        shadowElevation = 12.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+    ) {
+        Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .draggable(
+                        state = rememberDraggableState(onDrag),
+                        orientation = Orientation.Vertical,
+                        onDragStopped = { velocity -> onDragStopped(velocity) }
+                    )
+                    .clickable(onClick = onHandleTap)
+                    .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 12.dp)
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .size(width = 36.dp, height = 4.dp)
+                        .background(CivicColors.Outline, CircleShape)
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(title, style = MaterialTheme.typography.titleLarge, color = CivicColors.Navy, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = CivicColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            HorizontalDivider(color = CivicColors.Outline)
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 24.dp)
+            ) {
+                if (allNodes.isEmpty()) {
+                    item {
+                        EmptyState(
+                            icon = Icons.Outlined.Map,
+                            title = "Not mapped yet",
+                            message = "${party.name}'s organisation hasn't been ingested, so there is nothing to place on the map."
                         )
-                        if (selectedDistrict == null) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear state",
-                                tint = CivicColors.Navy.copy(alpha = 0.5f),
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .clickable { onClearState() }
-                            )
+                    }
+                    return@LazyColumn
+                }
+
+                if (selectedState == null) {
+                    item { PanelSectionLabel("State units") }
+                    if (stateGeoDataList.isEmpty()) {
+                        item { PanelNote("No state units recorded yet.") }
+                    }
+                    items(stateGeoDataList, key = { "state-${it.stateName}" }) { st ->
+                        StateRow(state = st, partyColor = party.color, onClick = { onStateSelected(st.stateName) })
+                    }
+                    item { PanelSectionLabel("National leadership") }
+                } else {
+                    if (stateData != null && stateData.districts.isNotEmpty()) {
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(stateData.districts, key = { it.districtName }) { d ->
+                                    val selected = d.districtName.equals(selectedDistrict, ignoreCase = true)
+                                    FilterChip(
+                                        selected = selected,
+                                        onClick = { onDistrictSelected(if (selected) null else d.districtName) },
+                                        label = { Text("${d.districtName} · ${d.leaderCount}") },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = CivicColors.Surface,
+                                            selectedContainerColor = CivicColors.Navy,
+                                            selectedLabelColor = Color.White
+                                        ),
+                                        border = FilterChipDefaults.filterChipBorder(
+                                            enabled = true,
+                                            selected = selected,
+                                            borderColor = CivicColors.Outline,
+                                            selectedBorderColor = CivicColors.Navy
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
+                    item { PanelSectionLabel(if (selectedDistrict != null) "Posts in $selectedDistrict" else "Posts in $selectedState") }
                 }
-            }
 
-            if (selectedDistrict != null) {
-                Text("›", color = CivicColors.TextSecondary, fontSize = 12.sp)
-                Surface(
-                    color = partyColor.copy(alpha = 0.18f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = selectedDistrict,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = CivicColors.Navy
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Clear district",
-                            tint = CivicColors.Navy.copy(alpha = 0.5f),
-                            modifier = Modifier
-                                .size(12.dp)
-                                .clickable { onClearDistrict() }
+                if (positions.isEmpty()) {
+                    item {
+                        EmptyState(
+                            icon = Icons.Outlined.PersonSearch,
+                            title = "No posts recorded here",
+                            message = "${party.shortName} has no positions on record for ${selectedDistrict ?: selectedState ?: "this area"} yet."
                         )
                     }
-                }
-            }
-
-            // Show resolved location indicator
-            if (resolvedLocation?.state != null && selectedState == null) {
-                Spacer(modifier = Modifier.weight(1f))
-                Surface(
-                    color = CivicColors.Saffron.copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = "📍 ${resolvedLocation.state}",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = CivicColors.Saffron,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+                } else {
+                    items(positions, key = { it.id }) { node ->
+                        PositionRow(node = node, onClick = { onPositionClicked(node) }, showJurisdiction = selectedState == null)
+                    }
                 }
             }
         }
@@ -592,121 +607,51 @@ private fun GeoBreadcrumbBar(
 }
 
 @Composable
-private fun MapLeaderCard(
-    node: PartyTreeNode,
-    partyColor: Color,
-    onCardClick: () -> Unit,
-    onLocateInHierarchy: () -> Unit
-) {
-    val isNotFetched = node.isNotFetched
+private fun PanelSectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = CivicColors.TextMuted,
+        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 6.dp)
+    )
+}
 
-    Card(
+@Composable
+private fun PanelNote(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = CivicColors.TextSecondary,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+private fun StateRow(state: StateGeoData, partyColor: Color, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(
-                width = if (isNotFetched) 1.dp else 1.5.dp,
-                color = if (isNotFetched) CivicColors.Navy.copy(alpha = 0.2f) else CivicColors.Navy,
-                shape = RoundedCornerShape(10.dp)
-            )
-            .clickable { if (!isNotFetched) onCardClick() },
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isNotFetched) Color(0xFFF7F7F7) else Color.White
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isNotFetched) 0.dp else 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Avatar
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(
-                        if (isNotFetched) CivicColors.Navy.copy(alpha = 0.07f)
-                        else node.level.badgeColor.copy(alpha = 0.15f),
-                        CircleShape
-                    )
-                    .border(
-                        1.dp,
-                        if (isNotFetched) CivicColors.Navy.copy(alpha = 0.15f) else node.level.badgeColor,
-                        CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = if (isNotFetched) "❓" else node.photoEmoji, fontSize = 22.sp)
-            }
-
-            // Info column
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Surface(
-                        color = if (isNotFetched) CivicColors.Navy.copy(alpha = 0.3f) else node.level.badgeColor,
-                        shape = RoundedCornerShape(3.dp)
-                    ) {
-                        Text(
-                            text = node.level.groupLabel,
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = node.holderName,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = if (isNotFetched) CivicColors.TextSecondary else CivicColors.Navy,
-                    fontStyle = if (isNotFetched) androidx.compose.ui.text.font.FontStyle.Italic
-                                else androidx.compose.ui.text.font.FontStyle.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = node.roleTitle,
-                    fontSize = 10.5.sp,
-                    color = CivicColors.OnSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // Find in hierarchy button
-            if (!isNotFetched) {
-                IconButton(
-                    onClick = onLocateInHierarchy,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AccountTree,
-                        contentDescription = "Find in Hierarchy",
-                        tint = CivicColors.Saffron,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            } else {
-                Surface(
-                    color = CivicColors.Saffron.copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = "Pending",
-                        fontSize = 10.sp,
-                        color = CivicColors.Saffron,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                    )
-                }
-            }
+        Box(
+            Modifier
+                .size(36.dp)
+                .background(lerp(LAND, partyColor, 0.25f + 0.55f * state.representationScore), RoundedCornerShape(10.dp))
+        )
+        Column(Modifier.weight(1f)) {
+            Text(state.stateName, style = MaterialTheme.typography.titleSmall, color = CivicColors.Navy)
+            Text(
+                text = "${state.leaderCount} posts · led by ${state.topLeaderName.takeUnless { it.contains("Not yet", true) } ?: "—"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = CivicColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = CivicColors.TextMuted)
     }
 }

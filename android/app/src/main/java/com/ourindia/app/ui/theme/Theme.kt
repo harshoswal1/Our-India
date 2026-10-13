@@ -1,70 +1,64 @@
 package com.ourindia.app.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.RoundedCornerShape
 
-// ── Dual Mode: Brutalist (sharp) vs Accessible (rounded) ───────────
-enum class ThemeMode { BRUTALIST, ACCESSIBLE }
-
-val LocalThemeMode = compositionLocalOf { ThemeMode.BRUTALIST }
-
-private val BrutalistShapes = Shapes(
-    extraSmall = RoundedCornerShape(0.dp),
-    small = RoundedCornerShape(0.dp),
-    medium = RoundedCornerShape(4.dp),
-    large = RoundedCornerShape(0.dp),
-    extraLarge = RoundedCornerShape(0.dp)
+private val CivicShapes = Shapes(
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp)
 )
 
-private val AccessibleShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(24.dp)
-)
-
+// Every surfaceContainer slot is set explicitly: lightColorScheme's defaults are the
+// purple-tinted M3 baseline, which leaks into NavigationBar, sheets and chips otherwise.
 private val CivicColorScheme = lightColorScheme(
     primary = CivicColors.Navy,
     onPrimary = CivicColors.OnPrimary,
+    primaryContainer = Color(0xFFE3E8F0),
+    onPrimaryContainer = CivicColors.Navy,
     secondary = CivicColors.Saffron,
     onSecondary = CivicColors.OnPrimary,
+    secondaryContainer = Color(0xFFFCE3D2),
+    onSecondaryContainer = Color(0xFF5A2300),
     tertiary = CivicColors.Teal,
     onTertiary = CivicColors.OnPrimary,
+    tertiaryContainer = Color(0xFFD5EFEB),
+    onTertiaryContainer = Color(0xFF0B3D37),
     error = CivicColors.CivicRed,
     onError = CivicColors.OnPrimary,
     background = CivicColors.Background,
     onBackground = CivicColors.OnBackground,
-    surface = CivicColors.Surface,
+    surface = CivicColors.Background,
     onSurface = CivicColors.OnSurface,
     surfaceVariant = CivicColors.SurfaceVariant,
     onSurfaceVariant = CivicColors.TextSecondary,
-    outline = CivicColors.Navy.copy(alpha = 0.2f)
+    surfaceTint = Color.Transparent,
+    outline = CivicColors.Outline,
+    outlineVariant = CivicColors.Outline,
+    surfaceBright = CivicColors.Surface,
+    surfaceDim = Color(0xFFE9E5DC),
+    surfaceContainerLowest = CivicColors.Surface,
+    surfaceContainerLow = CivicColors.Surface,
+    surfaceContainer = CivicColors.Surface,
+    surfaceContainerHigh = Color(0xFFF3F0EA),
+    surfaceContainerHighest = CivicColors.SurfaceVariant,
+    inverseSurface = CivicColors.Navy,
+    inverseOnSurface = Color(0xFFF1F3F6)
 )
 
 @Composable
-fun OurIndiaTheme(
-    themeMode: ThemeMode = ThemeMode.BRUTALIST,
-    content: @Composable () -> Unit
-) {
-    val shapes = when (themeMode) {
-        ThemeMode.BRUTALIST -> BrutalistShapes
-        ThemeMode.ACCESSIBLE -> AccessibleShapes
-    }
-
-    CompositionLocalProvider(LocalThemeMode provides themeMode) {
-        MaterialTheme(
-            colorScheme = CivicColorScheme,
-            typography = OurIndiaTypography,
-            shapes = shapes,
-            content = content
-        )
-    }
+fun OurIndiaTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = CivicColorScheme,
+        typography = OurIndiaTypography,
+        shapes = CivicShapes,
+        content = content
+    )
 }
