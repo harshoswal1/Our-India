@@ -34,6 +34,16 @@ interface PartyNodeDao {
         deleteAll()
         insertAll(nodes)
     }
+
+    /** ISO dates compare correctly as strings, so this drops every row older than the seed. */
+    @Query("DELETE FROM party_structure WHERE partyName = :party AND versionDate < :seedDate")
+    suspend fun deleteOlderThan(party: String, seedDate: String)
+
+    @Transaction
+    suspend fun replaceStaleSeed(party: String, seedDate: String, nodes: List<PartyNodeEntity>) {
+        deleteOlderThan(party, seedDate)
+        insertAll(nodes)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════

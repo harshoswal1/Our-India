@@ -174,23 +174,9 @@ fun PoliticianProfileScreen(
 
             if (profile.verifiedSources.isNotEmpty()) {
                 item {
-                    SectionCard(title = "Sources", icon = Icons.Outlined.Description) {
+                    SectionCard(title = "Source for this post", icon = Icons.Outlined.Description) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            profile.verifiedSources.forEach { source ->
-                                Column(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .background(CivicColors.Background, RoundedCornerShape(12.dp))
-                                        .padding(12.dp)
-                                ) {
-                                    Text(source.title, style = MaterialTheme.typography.titleSmall, color = CivicColors.Navy)
-                                    Text(
-                                        "${source.authority} · updated ${source.date}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = CivicColors.TextSecondary
-                                    )
-                                }
-                            }
+                            profile.verifiedSources.forEach { SourceLine(it) }
                         }
                     }
                 }

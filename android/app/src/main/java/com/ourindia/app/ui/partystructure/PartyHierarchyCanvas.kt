@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
@@ -104,6 +105,8 @@ fun PartyHierarchyCanvas(
 
     // Keep at least a strip of the chart on screen so it can't be flung into the void.
     fun bounded(o: Offset, s: Float): Offset {
+        // Last line of defence: a non-finite offset moves the chart off-screen for good.
+        if (!o.x.isFinite() || !o.y.isFinite()) return offset
         val keep = 96f * density
         val w = chart.width * density * s
         val h = chart.height * density * s
@@ -232,8 +235,11 @@ fun PartyHierarchyCanvas(
                             pastSlop = zoomMotion > viewConfiguration.touchSlop ||
                                 panSinceDown.getDistance() > viewConfiguration.touchSlop
                         }
-                        if (pastSlop) {
-                            val centroid = event.calculateCentroid(useCurrent = false)
+                        // The lift event has no pointer that is still down, so its centroid is
+                        // Offset.Unspecified (NaN). Applying it set offset to NaN and the whole
+                        // chart vanished the moment the first drag ended.
+                        val centroid = event.calculateCentroid(useCurrent = false)
+                        if (pastSlop && centroid.isSpecified && (zoomChange != 1f || panChange != Offset.Zero)) {
                             val newScale = (scale * zoomChange).coerceIn(MIN_SCALE, MAX_SCALE)
                             offset = bounded(centroid - (centroid - offset) * (newScale / scale) + panChange, newScale)
                             scale = newScale

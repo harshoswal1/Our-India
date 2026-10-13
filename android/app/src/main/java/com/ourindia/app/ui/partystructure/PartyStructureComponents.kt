@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -603,10 +604,18 @@ fun PositionDetailSheet(
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DetailLine(Icons.Outlined.Place, node.jurisdiction)
-                if (node.isNotFetched) {
-                    DetailLine(Icons.Outlined.Schedule, "This post exists in the party constitution; its holder hasn't been ingested yet.")
-                } else {
-                    DetailLine(Icons.Outlined.Verified, "Listed in the party's organisational records", tint = CivicColors.TealDeep)
+                val source = PartySeedData.sourceFor(node.id)
+                when {
+                    node.isNotFetched -> DetailLine(
+                        Icons.Outlined.Schedule,
+                        "This post exists in the party's organisation; its current holder isn't confirmed yet."
+                    )
+                    source != null -> SourceLine(source)
+                    else -> DetailLine(
+                        Icons.Outlined.Schedule,
+                        "Named in synced records but not yet checked against a published source.",
+                        tint = CivicColors.SaffronDeep
+                    )
                 }
             }
 
@@ -649,7 +658,33 @@ private fun DetailLine(icon: ImageVector, text: String, tint: Color = CivicColor
     }
 }
 
+/** Citation row: who reported it and when; tapping opens the article. */
 @Composable
-fun VerifiedTick(modifier: Modifier = Modifier) {
-    Icon(Icons.Default.CheckCircle, contentDescription = "Verified", tint = CivicColors.TealDeep, modifier = modifier.size(16.dp))
+fun SourceLine(source: VerifiedSource, modifier: Modifier = Modifier) {
+    val uriHandler = LocalUriHandler.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(CivicColors.Background)
+            .clickable(enabled = source.referenceUrl != null) {
+                source.referenceUrl?.let { runCatching { uriHandler.openUri(it) } }
+            }
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Outlined.Verified, contentDescription = null, tint = CivicColors.TealDeep, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text(source.title, style = MaterialTheme.typography.titleSmall, color = CivicColors.Navy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                "${source.authority} · ${source.date}",
+                style = MaterialTheme.typography.bodySmall,
+                color = CivicColors.TextSecondary
+            )
+        }
+        if (source.referenceUrl != null) {
+            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open source", tint = CivicColors.TextSecondary, modifier = Modifier.size(18.dp))
+        }
+    }
 }
