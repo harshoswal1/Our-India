@@ -41,3 +41,4 @@ desktop.ini
 __pycache__/
 *.py[cod]
 *$py.class
+.kilo/agents/data.md
