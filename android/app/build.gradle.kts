@@ -36,6 +36,8 @@ android {
             "\"${localProperties.getProperty("MAPS_API_KEY", "")}\"")
         buildConfigField("String", "SUPABASE_URL",
             "\"${localProperties.getProperty("SUPABASE_URL", "https://vfrjnsdqqcnmeugqlwti.supabase.co/rest/v1/")}\"")
+        buildConfigField("String", "CIVIC_API_URL",
+            "\"${localProperties.getProperty("CIVIC_API_URL", "https://citizencomplaint.onrender.com/api/v1/")}\"")
         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY",
             "\"${localProperties.getProperty("SUPABASE_PUBLISHABLE_KEY", "")}\"")
 

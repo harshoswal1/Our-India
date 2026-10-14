@@ -28,6 +28,18 @@ object CivicColors {
     val TextSecondary = Color(0xFF5B6472)
     val TextMuted = Color(0xFF8A919C)
 
+    // NagrikVoice: the civic section keeps its own accent (India green) on the shared paper,
+    // so the two halves of the app are recognisable at a glance without clashing.
+    val Civic = Color(0xFF1B6E4A)
+    val CivicDeep = Color(0xFF12523A)
+    val CivicContainer = Color(0xFFDDEFE5)
+    val Amber = Color(0xFFB7791F)
+    val AmberContainer = Color(0xFFFBEBD0)
+    val Danger = Color(0xFFB3261E)
+    val DangerContainer = Color(0xFFF9DEDC)
+    val Violet = Color(0xFF5B4BA6)
+    val VioletContainer = Color(0xFFE6E1F7)
+
     // Party colors
     val BJP = Color(0xFFFF6B00)
     val INC = Color(0xFF0FA3D8)

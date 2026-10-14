@@ -48,17 +48,30 @@ import com.ourindia.app.ui.theme.CivicColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.ourindia.app.ui.common.rememberLocateMe
 
+/**
+ * Leaders tab. [openParty]/[openNodeId] deep-link from Home ("your area's leaders").
+ * [onImmersiveChange] tells the app shell to hide its bottom bar while a party workspace
+ * or profile is open — the workspace has its own tab bar and two stacked bars read as noise.
+ */
 @Composable
 fun PartyStructureScreen(
-    viewModel: PartyStructureViewModel = hiltViewModel(),
-    modifier: Modifier = Modifier
+    resolver: LocalGeographicResolver,
+    modifier: Modifier = Modifier,
+    openParty: String? = null,
+    openNodeId: String? = null,
+    onImmersiveChange: (Boolean) -> Unit = {},
+    viewModel: PartyStructureViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    // Hoisted out of the screen switch: it caches parsed boundary files, and the old
-    // per-entry instance re-parsed them every time the workspace was re-entered.
-    val resolver = remember { LocalGeographicResolver(context.applicationContext) }
+
+    LaunchedEffect(openParty, openNodeId) {
+        if (openParty != null) viewModel.openParty(openParty, openNodeId)
+    }
+    LaunchedEffect(uiState.currentScreen) {
+        onImmersiveChange(uiState.currentScreen != FeatureScreen.PARTY_SELECTOR)
+    }
 
     BackHandler(enabled = uiState.currentScreen != FeatureScreen.PARTY_SELECTOR) {
         when (uiState.currentScreen) {
@@ -117,12 +130,7 @@ private fun PartySelectorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        TricolorRule(Modifier.width(18.dp))
-                        Text("Our India", style = MaterialTheme.typography.titleLarge, color = CivicColors.Navy)
-                    }
-                },
+                title = { Text("Leaders", style = MaterialTheme.typography.headlineSmall, color = CivicColors.Navy) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CivicColors.Background)
             )
         },
@@ -372,136 +380,5 @@ private fun BusyIconButton(busy: Boolean, onClick: () -> Unit, icon: @Composable
     IconButton(onClick = onClick, enabled = !busy) {
         if (busy) CircularProgressIndicator(strokeWidth = 2.dp, color = CivicColors.Saffron, modifier = Modifier.size(20.dp))
         else icon()
-    }
-}
-
-// ── Location ─────────────────────────────────────────────────────────────────
-
-/** Permission → services check → one fix → resolve. Returns the click handler. */
-@Composable
-private fun rememberLocateMe(
-    resolver: LocalGeographicResolver,
-    onStart: () -> Unit,
-    onResolved: (ResolvedLocation) -> Unit,
-    onFailed: (String) -> Unit
-): () -> Unit {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var showPermissionDialog by remember { mutableStateOf(false) }
-    var showServicesDialog by remember { mutableStateOf(false) }
-
-    val start = {
-        if (!locationServicesOn(context)) {
-            showServicesDialog = true
-        } else {
-            onStart()
-            requestFix(context, scope, resolver, onResolved, onFailed)
-        }
-    }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants.values.any { it }) start() else showPermissionDialog = true
-    }
-
-    if (showPermissionDialog) {
-        AlertDialog(
-            onDismissRequest = { showPermissionDialog = false },
-            title = { Text("Location permission needed") },
-            text = { Text("Allow location access to see the party posts that cover where you are.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showPermissionDialog = false
-                    runCatching {
-                        context.startActivity(
-                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
-                        )
-                    }
-                }) { Text("Open settings") }
-            },
-            dismissButton = { TextButton(onClick = { showPermissionDialog = false }) { Text("Not now") } }
-        )
-    }
-    if (showServicesDialog) {
-        AlertDialog(
-            onDismissRequest = { showServicesDialog = false },
-            title = { Text("Location is off") },
-            text = { Text("Turn on location services to find the party structure around you.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showServicesDialog = false
-                    runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
-                }) { Text("Turn on") }
-            },
-            dismissButton = { TextButton(onClick = { showServicesDialog = false }) { Text("Not now") } }
-        )
-    }
-
-    return {
-        val granted = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-            .any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
-        if (granted) start()
-        else launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-    }
-}
-
-private fun locationServicesOn(context: Context): Boolean {
-    val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return false
-    return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-}
-
-@SuppressLint("MissingPermission")
-private fun requestFix(
-    context: Context,
-    scope: CoroutineScope,
-    resolver: LocalGeographicResolver,
-    onResolved: (ResolvedLocation) -> Unit,
-    onFailed: (String) -> Unit
-) {
-    val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-    fun deliver(location: Location) {
-        scope.launch {
-            val resolved = resolver.resolveLocation(location.latitude, location.longitude)
-            if (resolved != null) onResolved(resolved) else onFailed("Your location is outside India's mapped boundaries")
-        }
-    }
-
-    try {
-        val last = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
-            .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
-            .maxByOrNull { it.time }
-        // A cached fix is fine if recent; a stale one could be another city.
-        if (last != null && System.currentTimeMillis() - last.time < 10 * 60_000) {
-            deliver(last)
-            return
-        }
-
-        val provider = if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
-        var done = false
-        // All four callbacks are overridden on purpose: they are only default methods from
-        // API 30, and on 26–29 the platform calls them and would hit an AbstractMethodError.
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                if (done) return
-                done = true
-                deliver(location)
-            }
-            @Deprecated("Deprecated in Java")
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-            override fun onProviderEnabled(provider: String) {}
-            override fun onProviderDisabled(provider: String) {}
-        }
-        @Suppress("DEPRECATION")
-        lm.requestSingleUpdate(provider, listener, Looper.getMainLooper())
-        // Without a timeout the spinner ran forever indoors where GPS never fixes.
-        scope.launch {
-            delay(15_000)
-            if (done) return@launch
-            done = true
-            lm.removeUpdates(listener)
-            if (last != null) deliver(last) else onFailed("Couldn't get a location fix — try again with Wi-Fi on")
-        }
-    } catch (e: SecurityException) {
-        onFailed("Location permission was revoked")
-    } catch (e: Exception) {
-        onFailed("Location is unavailable right now")
     }
 }

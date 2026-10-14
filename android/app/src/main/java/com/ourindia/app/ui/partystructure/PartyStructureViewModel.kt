@@ -2,6 +2,7 @@ package com.ourindia.app.ui.partystructure
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ourindia.app.data.geo.LocationStore
 import com.ourindia.app.data.geo.ResolvedLocation
 import com.ourindia.app.data.local.dao.PartyNodeDao
 import com.ourindia.app.data.local.entity.PartyNodeEntity
@@ -18,7 +19,8 @@ import javax.inject.Inject
 @HiltViewModel
 class PartyStructureViewModel @Inject constructor(
     private val partyNodeDao: PartyNodeDao,
-    private val syncRepository: PoliticalSyncRepository
+    private val syncRepository: PoliticalSyncRepository,
+    private val locationStore: LocationStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PartyStructureUiState(partiesWithData = SEEDED_PARTIES))
@@ -37,7 +39,16 @@ class PartyStructureViewModel @Inject constructor(
     // query re-seeded on every emission of itself and spun forever.
     private val seedAttempted = mutableSetOf<String>()
 
+    /** Node to focus once the party's rows have loaded (deep link from Home). */
+    private var pendingLocate: String? = null
+
     init {
+        // A fix taken on Home or Report also filters Leaders, and vice versa.
+        viewModelScope.launch {
+            locationStore.location.collect { loc ->
+                if (loc != _uiState.value.resolvedLocation) applyLocation(loc)
+            }
+        }
         viewModelScope.launch {
             partyNodeDao.observePartyNames().collect { names ->
                 _uiState.update { it.copy(partiesWithData = names.toSet() + SEEDED_PARTIES) }
@@ -103,6 +114,16 @@ class PartyStructureViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Opens a party's workspace, optionally focused on one post. */
+    fun openParty(partyShortName: String, nodeId: String?) {
+        val state = _uiState.value
+        if (state.currentScreen == FeatureScreen.PARTY_SELECTOR || state.selectedParty != partyShortName) {
+            onSelectPartyFromGrid(partyShortName)
+        }
+        if (nodeId == null) return
+        if (orgTree.unitOf(nodeId) != null) locateInHierarchy(nodeId) else pendingLocate = nodeId
     }
 
     fun navigateToPartySelector() {
@@ -213,6 +234,11 @@ class PartyStructureViewModel @Inject constructor(
      * then focuses the chart on the deepest position covering that place.
      */
     fun onLocationResolved(location: ResolvedLocation?) {
+        locationStore.location.value = location
+        applyLocation(location)
+    }
+
+    private fun applyLocation(location: ResolvedLocation?) {
         _uiState.update {
             it.copy(
                 resolvedLocation = location,
@@ -255,6 +281,12 @@ class PartyStructureViewModel @Inject constructor(
                 searchResults = search(nodes, it.searchQuery),
                 isLoading = false
             )
+        }
+        pendingLocate?.let { id ->
+            if (orgTree.unitOf(id) != null) {
+                pendingLocate = null
+                locateInHierarchy(id)
+            }
         }
     }
 

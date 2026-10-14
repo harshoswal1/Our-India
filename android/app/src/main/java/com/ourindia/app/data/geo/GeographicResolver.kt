@@ -20,8 +20,19 @@ data class ResolvedLocation(
     val taluka: String? = null,
     // The point that was resolved, so the map can pin it instead of a state's centre.
     val latitude: Double? = null,
-    val longitude: Double? = null
-)
+    val longitude: Double? = null,
+    /** GPS accuracy of the fix, when it came from the device rather than a map tap. */
+    val accuracyMeters: Float? = null
+) {
+    /** "Haveli, Pune, Maharashtra" — most specific first, for headers and complaint locality. */
+    val label: String get() = listOfNotNull(taluka, district, state).distinct().joinToString(", ")
+}
+
+/** Where the user is, shared by Home, Leaders and Report so one fix serves the whole app. */
+@javax.inject.Singleton
+class LocationStore @javax.inject.Inject constructor() {
+    val location = kotlinx.coroutines.flow.MutableStateFlow<ResolvedLocation?>(null)
+}
 
 /** Abstraction for resolving geographical coordinates to structured location info */
 interface GeographicResolver {
