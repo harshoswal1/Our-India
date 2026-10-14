@@ -114,7 +114,9 @@ fun IssueDetailScreen(
                 actions = {
                     state.complaint?.let { c ->
                         IconButton(onClick = {
-                            val text = "${c.title} — reported on NagrikVoice (${c.id}), ${c.locality}"
+                            // The server has no public web page per report, so link the spot, not a dead URL.
+                            val text = "${c.title} — reported on NagrikVoice (${c.id}) to ${c.authorityName ?: c.administrativeArea}, ${c.locality}\n" +
+                                "https://maps.google.com/?q=${c.latitude},${c.longitude}"
                             context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share issue"))
                         }) { Icon(Icons.Outlined.Share, contentDescription = "Share", tint = CivicColors.Navy) }
                     }

@@ -27,6 +27,9 @@ import com.ourindia.app.data.civic.Complaint
 import com.ourindia.app.data.geo.LocalGeographicResolver
 import com.ourindia.app.ui.common.rememberLocateMe
 import com.ourindia.app.ui.theme.CivicColors
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun ReportScreen(
@@ -105,10 +108,10 @@ fun ReportScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Step(1, "Photo", "Take it now, on the spot. Gallery photos aren't accepted as evidence.") {
-                PhotoSlot(state.photo, encoding = state.encodingPhoto, onTake = takePhoto)
+                PhotoSlot(state.photo, takenAt = state.photoTakenAt, encoding = state.encodingPhoto, onTake = takePhoto)
             }
             Step(2, "Place", null) {
-                PlaceCard(state, onLocate = locate, onToggleTest = viewModel::setSendAsTest)
+                PlaceCard(state, onLocate = locate, onToggleTest = viewModel::setSendAsTest, onChoose = viewModel::chooseAuthority)
             }
             Step(3, "What's wrong", null) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -183,7 +186,7 @@ private fun Step(n: Int, title: String, hint: String?, content: @Composable Colu
 }
 
 @Composable
-private fun PhotoSlot(photo: String?, encoding: Boolean, onTake: () -> Unit) {
+private fun PhotoSlot(photo: String?, takenAt: String?, encoding: Boolean, onTake: () -> Unit) {
     if (photo == null) {
         Surface(
             onClick = onTake,
@@ -205,6 +208,17 @@ private fun PhotoSlot(photo: String?, encoding: Boolean, onTake: () -> Unit) {
     } else {
         Box {
             IssueImage(photo, IssueCategory.OTHER, Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(20.dp)))
+            // The capture time travels with the report (camera_capture_timestamp); show what's sent.
+            takenAt?.let { capturedLabel(it) }?.let { label ->
+                Row(
+                    Modifier.align(Alignment.TopStart).padding(12.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape).padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Outlined.PhotoCamera, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                    Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White)
+                }
+            }
             FilledTonalButton(
                 onClick = onTake,
                 colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.Black.copy(alpha = 0.6f), contentColor = Color.White),
@@ -219,7 +233,7 @@ private fun PhotoSlot(photo: String?, encoding: Boolean, onTake: () -> Unit) {
 }
 
 @Composable
-private fun PlaceCard(state: ReportUiState, onLocate: () -> Unit, onToggleTest: (Boolean) -> Unit) {
+private fun PlaceCard(state: ReportUiState, onLocate: () -> Unit, onToggleTest: (Boolean) -> Unit, onChoose: (String) -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), color = CivicColors.Surface, border = BorderStroke(1.dp, CivicColors.Outline)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -229,7 +243,7 @@ private fun PlaceCard(state: ReportUiState, onLocate: () -> Unit, onToggleTest: 
                     Text(
                         when {
                             state.locating -> "Finding you…"
-                            loc != null -> loc.label
+                            loc != null -> listOfNotNull(state.place, loc.district).distinct().joinToString(", ").ifBlank { loc.label }
                             else -> "Location needed"
                         },
                         style = MaterialTheme.typography.titleSmall,
@@ -247,7 +261,23 @@ private fun PlaceCard(state: ReportUiState, onLocate: () -> Unit, onToggleTest: 
             }
 
             when (val c = state.coverage) {
-                is Coverage.Covered -> CoverageLine(Icons.Outlined.Verified, "Goes to ${c.authority.name}", CivicColors.CivicDeep)
+                is Coverage.Covered -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { CoverageLine(Icons.Outlined.Verified, "Goes to ${c.authority.name}", CivicColors.CivicDeep) }
+                    if (c.others.isNotEmpty()) {
+                        var open by remember { mutableStateOf(false) }
+                        Box {
+                            TextButton(onClick = { open = true }) { Text("Change", color = CivicColors.CivicDeep) }
+                            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                                c.others.forEach { (a, km) ->
+                                    DropdownMenuItem(
+                                        text = { Text("${a.name}  ·  ${km.toInt()} km") },
+                                        onClick = { open = false; onChoose(a.key) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 is Coverage.Outside -> {
                     HorizontalDivider(color = CivicColors.Outline)
                     Text(
@@ -276,6 +306,10 @@ private fun PlaceCard(state: ReportUiState, onLocate: () -> Unit, onToggleTest: 
         }
     }
 }
+
+private fun capturedLabel(iso: String): String? = runCatching {
+    "Taken " + DateTimeFormatter.ofPattern("d MMM, HH:mm").withZone(ZoneId.systemDefault()).format(Instant.parse(iso))
+}.getOrNull()
 
 @Composable
 private fun CoverageLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, tint: Color) {
@@ -329,6 +363,20 @@ private fun SentView(complaint: Complaint, onDone: () -> Unit, onOpen: () -> Uni
             color = CivicColors.TextSecondary,
             textAlign = TextAlign.Center
         )
+        Spacer(Modifier.height(20.dp))
+        // A receipt: what was sent, where, to whom.
+        Row(
+            Modifier.fillMaxWidth().background(CivicColors.Surface, RoundedCornerShape(20.dp)).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            IssueImage(complaint.photoUrl, IssueCategory.of(complaint.category), Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)))
+            Column(Modifier.weight(1f)) {
+                Text(complaint.title, style = MaterialTheme.typography.titleSmall, color = CivicColors.Navy, maxLines = 2)
+                Text(complaint.locality, style = MaterialTheme.typography.bodySmall, color = CivicColors.TextSecondary, maxLines = 1)
+                Text("To ${complaint.authorityName ?: complaint.administrativeArea}", style = MaterialTheme.typography.bodySmall, color = CivicColors.CivicDeep, maxLines = 2)
+            }
+        }
         Spacer(Modifier.height(20.dp))
         if (CivicConfig.SIMULATED_DELIVERY) DemoDeliveryNote()
         Spacer(Modifier.height(24.dp))

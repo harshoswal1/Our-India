@@ -44,9 +44,23 @@ class CivicSession @Inject constructor(
         _user.value = null
     }
 
+    /** City whose reports the Issues feed shows; null = every city. Kept across sign-outs. */
+    private val _city = MutableStateFlow(
+        prefs.getString(KEY_CITY, null)?.let { runCatching { json.decodeFromString<Authority>(it) }.getOrNull() }
+    )
+    val city: StateFlow<Authority?> = _city.asStateFlow()
+
+    fun setCity(a: Authority?) {
+        prefs.edit().apply {
+            if (a == null) remove(KEY_CITY) else putString(KEY_CITY, json.encodeToString(Authority.serializer(), a))
+        }.apply()
+        _city.value = a
+    }
+
     private companion object {
         const val KEY_TOKEN = "token"
         const val KEY_USER = "user"
+        const val KEY_CITY = "city"
     }
 }
 
@@ -69,8 +83,11 @@ class CivicRepository @Inject constructor(
 
     fun signOut() = session.signOut()
 
-    suspend fun feed(filter: String?, category: String?, lat: Double?, lng: Double?) =
-        call { api.feed(filter = filter, category = category, latitude = lat, longitude = lng).complaints }
+    val city: StateFlow<Authority?> get() = session.city
+    fun setCity(a: Authority?) = session.setCity(a)
+
+    suspend fun feed(filter: String?, category: String?, lat: Double?, lng: Double?, authorityId: String? = null) =
+        call { api.feed(filter = filter, category = category, authorityId = authorityId, latitude = lat, longitude = lng).complaints }
 
     suspend fun detail(id: String) = call { api.detail(id) }
 
@@ -85,9 +102,13 @@ class CivicRepository @Inject constructor(
 
     suspend fun retryDelivery(id: String) = call { api.retryDelivery(id) }
 
-    suspend fun rankings() = call { api.rankings() }
+    suspend fun rankings() = call { api.rankings().let { r -> r.copy(rankings = dedupe(r.rankings)) } }
 
-    suspend fun authorities() = call { api.authorities().authorities }
+    // Home, Report and Issues all ask on open; one fetch per process spares the cold server.
+    private var authoritiesCache: List<Authority>? = null
+
+    suspend fun authorities() = authoritiesCache?.let { Result.success(it) }
+        ?: call { dedupe(api.authorities().authorities).also { authoritiesCache = it } }
 
     suspend fun profile(userId: String) = call { api.profile(userId) }
 
@@ -121,6 +142,28 @@ class CivicRepository @Inject constructor(
             val a = sin(dLat / 2).pow(2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLng / 2).pow(2)
             return 2 * r * asin(sqrt(a))
         }
+
+        /**
+         * The server seeds Mumbai, Pune and Nashik twice (directory import + a second seed list)
+         * under different ids. Names match exactly, so keep one: the busier row, else the first,
+         * which is the directory-imported one with real department contacts.
+         */
+        fun dedupe(list: List<Authority>): List<Authority> {
+            fun activity(a: Authority) = a.unresolvedCount + a.resolvedVerifiedCount + a.awaitingEmailCount + a.failedDeliveryCount
+            val keep = list.groupBy { it.name.trim().lowercase() }.mapValues { (_, same) -> same.maxBy(::activity) }
+            return list.filter { keep[it.name.trim().lowercase()] === it }
+        }
+
+        /**
+         * Authorities with a known centre, nearest first; "covered" means within
+         * [CivicConfig.COVERAGE_RADIUS_KM] of one.
+         * ponytail: centre-distance stands in for real ward boundaries, so near a border the
+         * nearest centre can be the wrong corporation; the report screen lets people pick.
+         */
+        fun byDistance(list: List<Authority>, lat: Double, lng: Double): List<Pair<Authority, Double>> =
+            list.mapNotNull { a ->
+                if (a.centerLat == null || a.centerLng == null) null else a to distanceKm(lat, lng, a.centerLat, a.centerLng)
+            }.sortedBy { it.second }
     }
 }
 

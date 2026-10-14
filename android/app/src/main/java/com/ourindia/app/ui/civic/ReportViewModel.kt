@@ -1,6 +1,7 @@
 package com.ourindia.app.ui.civic
 
 import android.content.Context
+import android.location.Geocoder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ourindia.app.data.civic.Authority
@@ -13,19 +14,33 @@ import com.ourindia.app.data.geo.LocationStore
 import com.ourindia.app.data.geo.ResolvedLocation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
+import java.util.Locale
 import javax.inject.Inject
 
 /** Where the report will go, decided from the GPS fix and the server's authority list. */
 sealed interface Coverage {
     data object Unknown : Coverage
-    data class Covered(val authority: Authority, val distanceKm: Double) : Coverage
+    /** [others] are further corporations also in range: near a border the nearest may be wrong. */
+    data class Covered(val authority: Authority, val distanceKm: Double, val others: List<Pair<Authority, Double>> = emptyList()) : Coverage
     data class Outside(val nearest: Authority?, val distanceKm: Double?) : Coverage
+}
+
+/** Shared by Home and Report so both name the same corporation for a spot. */
+fun coverageFor(authorities: List<Authority>, lat: Double?, lng: Double?, chosenKey: String? = null): Coverage {
+    if (lat == null || lng == null || authorities.isEmpty()) return Coverage.Unknown
+    val sorted = CivicRepository.byDistance(authorities, lat, lng)
+    val inRange = sorted.filter { it.second <= CivicConfig.COVERAGE_RADIUS_KM }
+    if (inRange.isEmpty()) return sorted.firstOrNull()?.let { Coverage.Outside(it.first, it.second) } ?: Coverage.Outside(authorities.first(), null)
+    val pick = inRange.firstOrNull { it.first.key == chosenKey } ?: inRange.first()
+    return Coverage.Covered(pick.first, pick.second, inRange - pick)
 }
 
 sealed interface ReportStage {
@@ -41,8 +56,11 @@ data class ReportUiState(
     val photoTakenAt: String? = null,
     val encodingPhoto: Boolean = false,
     val location: ResolvedLocation? = null,
+    /** Neighbourhood from the phone's geocoder ("Kothrud"); officials need more than a taluka. */
+    val place: String? = null,
     val locating: Boolean = false,
     val coverage: Coverage = Coverage.Unknown,
+    val chosenAuthority: String? = null,
     val sendAsTest: Boolean = false,
     val category: IssueCategory? = null,
     val subtype: String = "",
@@ -107,8 +125,31 @@ class ReportViewModel @Inject constructor(
 
     fun onLocation(loc: ResolvedLocation) {
         locationStore.location.value = loc
-        _state.update { it.copy(location = loc, locating = false) }
+        _state.update { it.copy(location = loc, place = null, locating = false) }
         recomputeCoverage()
+        lookUpPlace(loc)
+    }
+
+    fun chooseAuthority(key: String) {
+        _state.update { it.copy(chosenAuthority = key) }
+        recomputeCoverage()
+    }
+
+    /** Best effort: no geocoder (or no network) just leaves the taluka/district as the locality. */
+    private fun lookUpPlace(loc: ResolvedLocation) {
+        val lat = loc.latitude ?: return
+        val lng = loc.longitude ?: return
+        if (!Geocoder.isPresent()) return
+        viewModelScope.launch {
+            val place = withContext(Dispatchers.IO) {
+                runCatching {
+                    @Suppress("DEPRECATION") // the async overload is API 33+; this runs off the main thread
+                    Geocoder(context, Locale("en", "IN")).getFromLocation(lat, lng, 1)?.firstOrNull()
+                }.getOrNull()
+            }?.let { a -> listOfNotNull(a.subLocality, a.locality).distinct().joinToString(", ").ifBlank { null } }
+            // Ignore a late answer for a fix that has since been replaced.
+            if (place != null) _state.update { if (it.location == loc) it.copy(place = place) else it }
+        }
     }
 
     fun onLocationFailed(message: String) = _state.update { it.copy(locating = false, message = message) }
@@ -121,23 +162,8 @@ class ReportViewModel @Inject constructor(
     fun setLandmark(s: String) = _state.update { it.copy(landmark = s.take(120)) }
     fun messageShown() = _state.update { it.copy(message = null) }
 
-    private fun recomputeCoverage() {
-        val loc = _state.value.location
-        val lat = loc?.latitude
-        val lng = loc?.longitude
-        if (lat == null || lng == null || authorities.isEmpty()) {
-            _state.update { it.copy(coverage = Coverage.Unknown) }
-            return
-        }
-        val nearest = authorities
-            .mapNotNull { a -> if (a.centerLat == null || a.centerLng == null) null else a to CivicRepository.distanceKm(lat, lng, a.centerLat, a.centerLng) }
-            .minByOrNull { it.second }
-        val coverage = when {
-            nearest == null -> Coverage.Outside(authorities.firstOrNull(), null)
-            nearest.second <= CivicConfig.COVERAGE_RADIUS_KM -> Coverage.Covered(nearest.first, nearest.second)
-            else -> Coverage.Outside(nearest.first, nearest.second)
-        }
-        _state.update { it.copy(coverage = coverage) }
+    private fun recomputeCoverage() = _state.update {
+        it.copy(coverage = coverageFor(authorities, it.location?.latitude, it.location?.longitude, it.chosenAuthority))
     }
 
     /** Step 1: look for the same problem nearby so it gets support, not a duplicate. */
@@ -187,7 +213,7 @@ class ReportViewModel @Inject constructor(
             longitude = loc.longitude!!,
             locationAccuracy = loc.accuracyMeters?.toDouble(),
             landmark = s.landmark.trim().ifBlank { null },
-            locality = loc.taluka ?: loc.district ?: loc.label,
+            locality = s.place ?: loc.taluka ?: loc.district ?: loc.label,
             administrativeArea = authority.name,
             authorityId = authority.key,
             cameraCaptureTimestamp = s.photoTakenAt

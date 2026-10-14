@@ -25,7 +25,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.ourindia.app.data.civic.Authority
-import com.ourindia.app.data.civic.CivicConfig
 import com.ourindia.app.data.civic.CivicRepository
 import com.ourindia.app.data.civic.CivicUser
 import com.ourindia.app.data.civic.Complaint
@@ -33,7 +32,9 @@ import com.ourindia.app.data.geo.LocalGeographicResolver
 import com.ourindia.app.data.geo.LocationStore
 import com.ourindia.app.data.geo.ResolvedLocation
 import com.ourindia.app.data.local.entity.PartyNodeEntity
+import com.ourindia.app.ui.civic.Coverage
 import com.ourindia.app.ui.civic.IssueCategory
+import com.ourindia.app.ui.civic.coverageFor
 import com.ourindia.app.ui.civic.IssueImage
 import com.ourindia.app.ui.civic.NagrikVoiceMark
 import com.ourindia.app.ui.civic.relativeTime
@@ -115,15 +116,9 @@ class HomeViewModel @Inject constructor(
         _state.update { it.copy(stateLeaders = stateHeads, districtLeaders = districtHeads) }
     }
 
-    private fun updateCoverage() {
-        val loc = _state.value.location
-        val lat = loc?.latitude
-        val lng = loc?.longitude
-        val covering = if (lat == null || lng == null) null else _state.value.liveAuthorities.firstOrNull { a ->
-            a.centerLat != null && a.centerLng != null &&
-                CivicRepository.distanceKm(lat, lng, a.centerLat, a.centerLng) <= CivicConfig.COVERAGE_RADIUS_KM
-        }
-        _state.update { it.copy(coveringAuthority = covering) }
+    // Nearest in range, same rule as the report screen (was: first in server order).
+    private fun updateCoverage() = _state.update {
+        it.copy(coveringAuthority = (coverageFor(it.liveAuthorities, it.location?.latitude, it.location?.longitude) as? Coverage.Covered)?.authority)
     }
 
     fun refreshIssues() = viewModelScope.launch { loadIssues(_state.value.location) }
@@ -322,7 +317,12 @@ private fun CivicSection(state: HomeUiState, onOpenIssue: (String) -> Unit, onBr
             Text(
                 when {
                     state.coveringAuthority != null -> "Live for ${state.coveringAuthority.name}. Report a problem and it goes on a public record."
-                    state.liveAuthorities.isNotEmpty() -> "Live in ${state.liveAuthorities.joinToString { it.name }}. You can browse those reports and send test reports from anywhere."
+                    state.liveAuthorities.isNotEmpty() -> {
+                        val states = state.liveAuthorities.map { it.state }.filter { it.isNotBlank() }.distinct().size
+                        val reach = "${state.liveAuthorities.size} cities across $states states"
+                        if (state.location == null) "Live in $reach. Use your location to see which one covers you."
+                        else "Not live where you are yet — it covers $reach. Browse their reports, or send a test report."
+                    }
                     else -> "Report civic problems and track whether they get fixed."
                 },
                 style = MaterialTheme.typography.bodyMedium,

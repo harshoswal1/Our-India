@@ -11,7 +11,9 @@ import com.ourindia.app.di.CivicModule
 import com.ourindia.app.ui.civic.Coverage
 import com.ourindia.app.ui.civic.IssueCategory
 import com.ourindia.app.ui.civic.ReportUiState
+import com.ourindia.app.ui.civic.coverageFor
 import com.ourindia.app.ui.civic.relativeTime
+import com.ourindia.app.ui.civic.shortName
 import com.ourindia.app.ui.civic.statusLook
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -79,6 +81,33 @@ class CivicLogicTest {
         assertEquals(kmc, outside.copy(sendAsTest = true).target)
         assertTrue(outside.copy(sendAsTest = true).missing.isEmpty())
         assertTrue(base.copy(photo = null, coverage = Coverage.Covered(kmc, 1.0)).missing.contains("a photo"))
+    }
+
+    @Test
+    fun multiCityRoutingPicksNearestDedupesAndAllowsOverride() {
+        // Live server on 2026-10-14 lists Pune twice (directory import + second seed).
+        val pune = Authority(id = "auth_pune", name = "Pune Municipal Corporation (PMC)", centerLat = 18.5204, centerLng = 73.8567)
+        val puneDup = pune.copy(id = "auth_pmc_pune")
+        val pcmc = Authority(id = "auth_pimpri", name = "Pimpri-Chinchwad Municipal Corporation (PCMC)", centerLat = 18.6298, centerLng = 73.7997)
+        val kmc = Authority(id = "auth_kmc_kolhapur", name = "Kolhapur Municipal Corporation (KMC)", centerLat = 16.705, centerLng = 74.2433)
+        val list = CivicRepository.dedupe(listOf(kmc, pune, pcmc, puneDup))
+        assertEquals(listOf("auth_kmc_kolhapur", "auth_pune", "auth_pimpri"), list.map { it.key })
+        // A duplicate that actually holds reports wins over the empty one.
+        assertEquals("auth_pmc_pune", CivicRepository.dedupe(listOf(pune, puneDup.copy(unresolvedCount = 2))).single().key)
+
+        // Kothrud, Pune: both PMC and PCMC are in range; nearest first, the other offered.
+        val c = coverageFor(list, 18.5074, 73.8077) as Coverage.Covered
+        assertEquals("auth_pune", c.authority.key)
+        assertEquals(listOf("auth_pimpri"), c.others.map { it.first.key })
+        assertEquals("auth_pimpri", (coverageFor(list, 18.5074, 73.8077, chosenKey = "auth_pimpri") as Coverage.Covered).authority.key)
+        // A choice that isn't in range is ignored rather than mis-routing the report.
+        assertEquals("auth_pune", (coverageFor(list, 18.5074, 73.8077, chosenKey = "auth_kmc_kolhapur") as Coverage.Covered).authority.key)
+        // Nagpur: nothing within range.
+        assertTrue(coverageFor(list, 21.1458, 79.0882) is Coverage.Outside)
+
+        assertEquals("Pune", pune.shortName)
+        assertEquals("Satara (council)", Authority(name = "Satara Municipal Council").shortName)
+        assertEquals("Municipal Corporation of Delhi (MCD)".substringBefore(" ("), Authority(name = "Municipal Corporation of Delhi (MCD)").shortName)
     }
 
     @Test
