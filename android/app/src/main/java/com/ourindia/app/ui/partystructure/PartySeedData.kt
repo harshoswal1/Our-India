@@ -14,7 +14,9 @@ import com.ourindia.app.data.local.entity.PartyNodeEntity
  * Bumping [SEED_DATE] replaces older seed rows on devices that already have them.
  */
 object PartySeedData {
-    const val SEED_DATE = "2026-10-14"
+    // Compared as a string against stored rows, so a same-day revision takes a suffix:
+    // "2026-10-14.2" sorts after "2026-10-14" and before any later date.
+    const val SEED_DATE = "2026-10-14.2"
     private const val NYF = "Not yet fetched"
 
     fun nodesFor(party: String): List<PartyNodeEntity> = seeds[party]?.nodes.orEmpty()
@@ -42,6 +44,18 @@ object PartySeedData {
         /** State-unit heads from one roster source. Rows: id suffix, state (boundary-file spelling), holder. */
         fun stateHeads(prefix: String, parent: String, role: String, source: VerifiedSource, vararg rows: Triple<String, String, String>) {
             rows.forEach { (code, state, holder) -> held("${prefix}_$code", "STATE", parent, "$role ($state)", holder, source, state) }
+        }
+
+        /**
+         * District units from one roster. Rows: post title, holder, and the boundary-file
+         * district the unit sits in (null when a unit spans several, e.g. Delhi's
+         * assembly-based districts), which is what the map tints.
+         */
+        fun districtHeads(prefix: String, parent: String, state: String, source: VerifiedSource, vararg rows: Triple<String, String, String?>) {
+            rows.forEach { (role, holder, mapDistrict) ->
+                val id = prefix + "_" + role.uppercase().replace(Regex("[^A-Z0-9]+"), "_").trim('_')
+                held(id, "DISTRICT", parent, role, holder, source, state, mapDistrict)
+            }
         }
 
         /** A post that exists in the party's organisation; holder not confirmed. */
@@ -222,6 +236,36 @@ object PartySeedData {
     private val jduState = src("JD(U) unveils new Bihar state committee; Nitish Kumar elected national president in March", "Social News XYZ (IANS)", "2026-07-08",
         "https://www.socialnews.xyz/2026/07/08/jdu-unveils-new-bihar-state-committee-with-12-vice-presidents")
 
+    // Added 2026-10-14 (district tier and remaining open posts)
+    private val bjpMhOffice = src("With an eye on 2029 Assembly polls, Maharashtra BJP appoints new office-bearers", "The Statesman", "2026-02-24",
+        "https://www.thestatesman.com/india/with-an-eye-on-2029-assembly-polls-maharashtra-bjp-appoints-new-office-bearers-1503561870.html")
+    private val bjpMhDistricts = src("BJP appoints new district presidents in 58 Maharashtra districts", "Maharashtra Desha", "2025-05-14",
+        "https://maharashtradesha.com/bjp-new-district-presidents-maharashtra-2025/")
+    private val bjpMhDistricts2 = src("BJP finalises remaining 22 Maharashtra district presidents", "Free Press Journal", "2025-06-01",
+        "https://www.freepressjournal.in/mumbai/maharashtra-news-bjp-finalises-remaining-22-district-presidents-ahead-of-local-body-polls")
+    private val bjpUpDistricts = src("UP BJP Jila Adhyaksh list: district and metropolitan presidents", "India TV", "2025-03-16",
+        "https://www.indiatvnews.com/uttar-pradesh/up-bjp-jila-adhyaksh-list-out-bjp-announces-district-presidents-names-in-uttar-pradesh-check-full-list-here-2025-03-16-980842")
+    private val bjpLucknowCity = src("Lucknow Mahanagar BJP executive announced by city president Anand Dwivedi", "ETV Bharat", "2026-03",
+        "https://www.etvbharat.com/hi/state/lucknow-bjp-mahanagar-executive-committee-announced-uttar-pradesh-news-ups26032204344")
+    private val bjpGjDistricts = src("Gujarat BJP district and city presidents announced", "DeshGujarat", "2025-03-06",
+        "https://deshgujarat.com/2025/03/06/gujarat-bjp-district-and-city-presidents-announced-here-is-the-list/")
+    private val bjpAhmedabadCity = src("Jagdish Vishwakarma takes charge, with Ahmedabad city BJP president Prerak Shah", "Gujarat Samachar", "2025-10",
+        "https://english.gujaratsamachar.com/news/gujarat/jagdish-vishwakarma-appointed-bjps-state-president-first-leader-from-ahmedabad-to-hold-the-post")
+    private val bjpDlDistricts = src("Delhi BJP announces names of presidents for 14 district units", "The News Mill (ANI)", "2025-05-26",
+        "https://thenewsmill.com/2025/05/delhi-bjp-announces-names-of-presidents-for-14-district-units/")
+    private val incDlDistricts = src("Congress appoints 14 new district presidents in Delhi", "The Tribune", "2026-05-15",
+        "https://www.tribuneindia.com/news/delhi/congress-appoints-14-new-district-presidents-in-delhi-under-organisational-revamp/")
+    private val incKaDistricts = src("Karnataka Congress new district presidents: full list (AICC)", "Oneindia Kannada", "2026-09-10",
+        "https://kannada.oneindia.com/news/karnataka/karnataka-congress-appoints-new-district-presidents-full-list-of-district-congress-committee-chief-467419.html")
+    private val tmcNorthKolkata = src("Saugata Roy unveils TMC appointments; Kunal Ghosh takes over North Kolkata unit", "ANI", "2026-06-13",
+        "https://aninews.in/news/national/general-news/saugata-roy-unveils-new-tmc-appointments-arnab-banerjee-for-youth-congress-president-kunal-ghosh-takes-over-north-kolkata-unit20260613233824/")
+    private val cpimKerala = src("CPI(M) Kerala rejig: no change in state leadership, M V Govindan continues", "The Week", "2026-09-15",
+        "https://www.theweek.in/news/india/2026/09/15/cpi-m-kerala-meeting-reforms.html")
+    private val cpimTripura = src("Tripura CPI(M), led by state secretary Jitendra Chaudhury, prepares for ULB polls", "Borok Times", "2026-10",
+        "https://boroktimes.com/tripura-cpim-begins-preparations-for-urban-local-body-elections/")
+    private val bjdRs = src("BJD names Manas Ranjan Mangaraj its Rajya Sabha leader after Sasmit Patra's exit", "The Hindu (PressReader)", "2026-04-14",
+        "https://www.pressreader.com/india/the-hindu-international-9bn2/20260414/281603837037423")
+
     // ── Structures ───────────────────────────────────────────────────
     private val seeds: Map<String, Seed> = mapOf(
         seed("BJP") {
@@ -239,26 +283,197 @@ object PartySeedData {
 
             val mh = held("BJP_STATE_MH", "STATE", n, "State President (Maharashtra)", "Ravindra Chavan", bjpStatePresidents, "Maharashtra")
             held("BJP_STATE_MH_GS_ORG", "STATE_GS_ORG", mh, "State General Secretary (Organisation)", "Ajay Jamwal", bjpOrgSecretaries, "Maharashtra")
-            open("BJP_STATE_MH_TREAS", "STATE_TREASURER", mh, "State Treasurer", "Maharashtra")
+            held("BJP_STATE_MH_TREAS", "STATE_TREASURER", mh, "State Treasurer", "Mihir Kotecha", bjpMhOffice, "Maharashtra")
             held("BJP_DIST_MUM", "DISTRICT", mh, "Mumbai President", "Ameet Satam", bjpMumbai, "Maharashtra", "Mumbai")
-            open("BJP_DIST_PUNE", "DISTRICT", mh, "Pune City President", "Maharashtra", "Pune")
+            held("BJP_DIST_PUNE", "DISTRICT", mh, "Pune City President", "Dhiraj Ghate", bjpMhDistricts, "Maharashtra", "Pune")
             held("BJP_DIST_NAGPUR", "DISTRICT", mh, "Nagpur City President", "Dayashankar Tiwari", bjpNagpur, "Maharashtra", "Nagpur")
+            districtHeads(
+                "BJP_DIST_MH", mh, "Maharashtra", bjpMhDistricts,
+                Triple("Sindhudurg District President", "Prabhakar Sawant", "Sindhudurg"),
+                Triple("Ratnagiri North District President", "Satish More", "Ratnagiri"),
+                Triple("Ratnagiri South District President", "Rajesh Sawant", "Ratnagiri"),
+                Triple("Raigad North District President", "Avinash Koli", "Raigarh"),
+                Triple("Raigad South District President", "Dhairyasheel Patil", "Raigarh"),
+                Triple("Thane City President", "Sandeep Lele", "Thane"),
+                Triple("Thane Rural District President", "Jitendra Daki", "Thane"),
+                Triple("Bhiwandi District President", "Ravikant Sawant", "Thane"),
+                Triple("Mira Bhayandar District President", "Dilip Jain", "Thane"),
+                Triple("Navi Mumbai District President", "Rajesh Patil", "Thane"),
+                Triple("Kalyan District President", "Nandu Parab", "Thane"),
+                Triple("Ulhasnagar District President", "Rajesh Vadhariya", "Thane"),
+                Triple("Pune North (Maval) District President", "Pradeep Kand", "Pune"),
+                Triple("Pimpri Chinchwad City President", "Shatrughna Kate", "Pune"),
+                Triple("Solapur City President", "Rohini Tadavalkar", "Solapur"),
+                Triple("Solapur East District President", "Shashikant Chavan", "Solapur"),
+                Triple("Solapur West District President", "Chetansingh Kedar", "Solapur"),
+                Triple("Satara District President", "Atul Bhosale", "Satara"),
+                Triple("Kolhapur East (Hatkanangle) District President", "Rajvardhan Nimbalkar", "Kolhapur"),
+                Triple("Kolhapur West (Karveer) District President", "Nathaji Patil", "Kolhapur"),
+                Triple("Sangli City President", "Prakash Dhang", "Sangli"),
+                Triple("Sangli Rural District President", "Samrat Mahadik", "Sangli"),
+                Triple("Nandurbar District President", "Nilesh Mali", "Nandurbar"),
+                Triple("Dhule City President", "Gajendra Ampalkar", "Dhule"),
+                Triple("Dhule Rural District President", "Bapu Khalane", "Dhule"),
+                Triple("Malegaon District President", "Nilesh Kachave", "Nashik"),
+                Triple("Jalgaon City President", "Deepak Suryavanshi", "Jalgaon"),
+                Triple("Jalgaon East District President", "Chandrakant Baviskar", "Jalgaon"),
+                Triple("Jalgaon West District President", "Radheshyam Chaudhari", "Jalgaon"),
+                Triple("Ahilyanagar North District President", "Nitin Dinkar", "Ahmadnagar"),
+                Triple("Ahilyanagar South District President", "Dilip Bhalsing", "Ahmadnagar"),
+                Triple("Nanded Metro President", "Amar Rajurkar", "Nanded"),
+                Triple("Parbhani Metro President", "Shivaji Bharose", "Parbhani"),
+                Triple("Hingoli District President", "Gajanan Ghuge", "Hingoli"),
+                Triple("Jalna Metro President", "Bhaskarrao Danave", "Jalna"),
+                Triple("Jalna Rural District President", "Narayan Kuche", "Jalna"),
+                Triple("Chhatrapati Sambhajinagar North District President", "Subhash Shirsath", "Aurangabad"),
+                Triple("Chhatrapati Sambhajinagar West District President", "Sanjay Khambayate", "Aurangabad"),
+                Triple("Dharashiv District President", "Datta Kulkarni", "Osmanabad"),
+                Triple("Buldhana District President", "Vijayraj Shinde", "Buldana"),
+                Triple("Khamgaon District President", "Sachin Deshmukh", "Buldana"),
+                Triple("Akola Metro President", "Jayvantrao Masane", "Akola"),
+                Triple("Akola Rural District President", "Santosh Shivarkar", "Akola"),
+                Triple("Washim District President", "Purushottam Chitalange", "Washim"),
+                Triple("Amravati City President", "Nitin Dhande", "Amravati"),
+                Triple("Amravati Rural District President", "Raviraj Deshmukh", "Amravati"),
+                Triple("Melghat District President", "Prabhudas Bhilavekar", "Amravati"),
+                Triple("Yavatmal District President", "Prafull Chavan", "Yavatmal"),
+                Triple("Pusad District President", "Aarti Phuphate", "Yavatmal"),
+                Triple("Nagpur Rural (Ramtek) District President", "Anantrao Raut", "Nagpur"),
+                Triple("Nagpur Rural (Katol) District President", "Manohar Kumbhare", "Nagpur"),
+                Triple("Bhandara District President", "Ashu Gondane", "Bhandara"),
+                Triple("Gondia District President", "Sita Rahangdale", "Gondiya"),
+                Triple("North Mumbai District President", "Deepak Bala Tawde", "Mumbai Suburban"),
+                Triple("North East Mumbai District President", "Deepak Dalvi", "Mumbai Suburban"),
+                Triple("North Central Mumbai District President", "Virendra Mhatre", "Mumbai Suburban")
+            )
+            districtHeads(
+                "BJP_DIST_MH", mh, "Maharashtra", bjpMhDistricts2,
+                Triple("North West Mumbai District President", "Gyanmurti Sharma", "Mumbai Suburban"),
+                Triple("South Central Mumbai District President", "Neeraj Ubhare", "Mumbai"),
+                Triple("South Mumbai District President", "Shalaka Salvi", "Mumbai")
+            )
 
             val dl = held("BJP_STATE_DL", "STATE", n, "State President (Delhi)", "Harsh Malhotra", bjpDelhi, "Delhi")
             held("BJP_STATE_DL_GS_ORG", "STATE_GS_ORG", dl, "State General Secretary (Organisation)", "Pawan Rana", bjpOrgSecretaries, "Delhi")
-            open("BJP_DIST_ND", "DISTRICT", dl, "New Delhi District President", "Delhi", "New Delhi")
+            held("BJP_DIST_ND", "DISTRICT", dl, "New Delhi District President", "Ravindra Chaudhary", bjpDlDistricts, "Delhi", "New Delhi")
+            districtHeads(
+                "BJP_DIST_DL", dl, "Delhi", bjpDlDistricts,
+                Triple("Keshavpuram District President", "Ajay Khatana", null),
+                Triple("Chandni Chowk District President", "Arvind Garg", "Central"),
+                Triple("North East Delhi District President", "U. K. Chaudhary", "North East"),
+                Triple("Naveen Shahdara District President", "Master Binod Kumar", "Shahdara"),
+                Triple("Mayur Vihar District President", "Vijendra Dhama", "East"),
+                Triple("Shahdara District President", "Deepak Gaba", "Shahdara"),
+                Triple("Karol Bagh District President", "Virendra Babbar", "Central"),
+                Triple("Outer Delhi District President", "Ramchandra Chawariya", null),
+                Triple("West Delhi District President", "Chandrapal Bakshi", "West"),
+                Triple("Najafgarh District President", "Raj Sharma Gautam", "South West"),
+                Triple("Mehrauli District President", "Ravindra Solanki", "South"),
+                Triple("South Delhi District President", "Maya Bisht", "South")
+            )
 
             val ka = held("BJP_STATE_KA", "STATE", n, "State President (Karnataka)", "B. Y. Vijayendra", bjpKarnataka, "Karnataka")
+            // Vacant: no full-time organisation secretary since G. V. Rajesh was recalled in May 2024 (ThePrint).
             open("BJP_STATE_KA_GS_ORG", "STATE_GS_ORG", ka, "State General Secretary (Organisation)", "Karnataka")
             held("BJP_DIST_BLR", "DISTRICT", ka, "Bengaluru South District President", "C. K. Ramamurthy", bjpBengaluru, "Karnataka", "Bangalore")
 
             val up = held("BJP_STATE_UP", "STATE", n, "State President (Uttar Pradesh)", "Pankaj Chaudhary", bjpStatePresidents, "Uttar Pradesh")
             held("BJP_STATE_UP_GS_ORG", "STATE_GS_ORG", up, "State General Secretary (Organisation)", "Dharampal", bjpOrgSecretaries, "Uttar Pradesh")
-            open("BJP_DIST_LKO", "DISTRICT", up, "Lucknow District President", "Uttar Pradesh", "Lucknow")
+            held("BJP_DIST_LKO", "DISTRICT", up, "Lucknow Mahanagar (City) President", "Anand Dwivedi", bjpLucknowCity, "Uttar Pradesh", "Lucknow")
+            districtHeads(
+                "BJP_DIST_UP", up, "Uttar Pradesh", bjpUpDistricts,
+                Triple("Lucknow District President", "Vijay Maurya", "Lucknow"),
+                Triple("Agra Mahanagar President", "Rajkumar Gupta", "Agra"),
+                Triple("Agra District President", "Prashant Poonia", "Agra"),
+                Triple("Moradabad Mahanagar President", "Girish Bhandula", "Moradabad"),
+                Triple("Moradabad District President", "Akash Pal", "Moradabad"),
+                Triple("Ghaziabad Mahanagar President", "Mayank Goyal", "Ghaziabad"),
+                Triple("Noida Mahanagar President", "Mahesh Chauhan", "Gautam Buddha Nagar"),
+                Triple("Gautam Buddha Nagar District President", "Abhishek Sharma", "Gautam Buddha Nagar"),
+                Triple("Meerut Mahanagar President", "Vivek Rastogi", "Meerut"),
+                Triple("Gorakhpur Mahanagar President", "Devesh Srivastava", "Gorakhpur"),
+                Triple("Gorakhpur District President", "Janardan Tiwari", "Gorakhpur"),
+                Triple("Kanpur North Mahanagar President", "Anil Dixit", "Kanpur Nagar"),
+                Triple("Kanpur South District President", "Shivram Singh", "Kanpur Nagar"),
+                Triple("Kanpur Rural District President", "Upendra Nath Paswan", "Kanpur Nagar"),
+                Triple("Mathura Mahanagar President", "Raju Yadav", "Mathura"),
+                Triple("Mathura District President", "Nirbhay Pandey", "Mathura"),
+                Triple("Prayagraj Mahanagar President", "Sanjay Gupta", "Prayagraj"),
+                Triple("Prayagraj Gangapar District President", "Nirmala Paswan", "Prayagraj"),
+                Triple("Prayagraj Yamunapar District President", "Rajesh Shukla", "Prayagraj"),
+                Triple("Bulandshahr District President", "Vikas Chauhan", "Bulandshahr"),
+                Triple("Etawah District President", "Annu Gupta", "Etawah"),
+                Triple("Ghazipur District President", "Om Prakash Rai", "Ghazipur"),
+                Triple("Lalitpur District President", "Harishchandra Rawat", "Lalitpur"),
+                Triple("Amethi District President", "Sudhanshu Shukla", "Amethi"),
+                Triple("Kasganj District President", "Neeraj Sharma", "Kasganj"),
+                Triple("Maharajganj District President", "Sanjay Pandey", "Mahrajganj"),
+                Triple("Raebareli District President", "Buddhi Lal", "Rae Bareli"),
+                Triple("Sonbhadra District President", "Nandlal Gupta", "Sonbhadra"),
+                Triple("Azamgarh District President", "Dhruv Singh", "Azamgarh"),
+                Triple("Lalganj District President", "Vinod Rajbhar", "Azamgarh"),
+                Triple("Basti District President", "Vivekanand Mishra", "Basti"),
+                Triple("Bhadohi District President", "Deepak Mishra", "Bhadohi"),
+                Triple("Pratapgarh District President", "Ashish Srivastava", "Pratapgarh"),
+                Triple("Rampur District President", "Harish Gangwar", "Rampur"),
+                Triple("Mainpuri District President", "Mamta Rajput", "Mainpuri"),
+                Triple("Farrukhabad District President", "Fateh Chandra Verma", "Farrukhabad"),
+                Triple("Bahraich District President", "Brajesh Pandey", "Bahraich"),
+                Triple("Sultanpur District President", "Sushil Tripathi", "Sultanpur"),
+                Triple("Auraiya District President", "Sarvesh Katheria", "Auraiya"),
+                Triple("Balrampur District President", "Ravi Mishra", "Balrampur"),
+                Triple("Gonda District President", "Amar Kishore Kashyap", "Gonda"),
+                Triple("Shravasti District President", "Mishri Lal Verma", "Shrawasti"),
+                Triple("Kannauj District President", "Veer Kumar Singh Bhadauria", "Kannauj"),
+                Triple("Sant Kabir Nagar District President", "Neetu Singh", "Sant Kabir Nagar"),
+                Triple("Mau District President", "Ramashray Maurya", "Mau"),
+                Triple("Ballia District President", "Sanjay Mishra", "Ballia"),
+                Triple("Machhlishahr District President", "Ajay Kumar Singh", "Jaunpur"),
+                Triple("Mahoba District President", "Mohanlal Kushwaha", "Mahoba"),
+                Triple("Chitrakoot District President", "Mahendra Kotarya", "Chitrakoot")
+            )
 
             val gj = held("BJP_STATE_GJ", "STATE", n, "State President (Gujarat)", "Jagdish Vishwakarma", bjpStatePresidents, "Gujarat")
             held("BJP_STATE_GJ_GS_ORG", "STATE_GS_ORG", gj, "State General Secretary (Organisation)", "Ratnakar", bjpOrgSecretaries, "Gujarat")
-            open("BJP_DIST_AHM", "DISTRICT", gj, "Ahmedabad City President", "Gujarat", "Ahmadabad")
+            held("BJP_DIST_AHM", "DISTRICT", gj, "Ahmedabad City President", "Prerak Shah", bjpAhmedabadCity, "Gujarat", "Ahmadabad")
+            districtHeads(
+                "BJP_DIST_GJ", gj, "Gujarat", bjpGjDistricts,
+                Triple("Ahmedabad District President", "Shailesh Davda", "Ahmadabad"),
+                Triple("Surat City President", "Paresh Kumar Patel", "Surat"),
+                Triple("Surat District President", "Bharat Rathod", "Surat"),
+                Triple("Rajkot City President", "Madhav K. Dave", "Rajkot"),
+                Triple("Rajkot District President", "Alpesh Dholaria", "Rajkot"),
+                Triple("Vadodara City President", "Jayaprakash Soni", "Vadodara"),
+                Triple("Jamnagar City President", "Binaben Kothari", "Jamnagar"),
+                Triple("Jamnagar District President", "Vinod Bhanderi", "Jamnagar"),
+                Triple("Junagadh City President", "Gauravbhai Rupareliya", "Junagadh"),
+                Triple("Junagadh District President", "Chandubhai Makwana", "Junagadh"),
+                Triple("Bhavnagar City President", "Kumarbhai Shah", "Bhavnagar"),
+                Triple("Bhavnagar District President", "Digvijay Singh Gohil", "Bhavnagar"),
+                Triple("Gandhinagar District President", "Anil Patel", "Gandhinagar"),
+                Triple("Mehsana District President", "Girish Rajgor", "Mahesana"),
+                Triple("Banaskantha District President", "Kirtisinh Vaghela", "Banas Kantha"),
+                Triple("Patan District President", "Ramesh Sindhav", "Patan"),
+                Triple("Navsari District President", "Bhuralal Shah", "Navsari"),
+                Triple("Mahisagar District President", "Dashrath Baria", "Mahisagar"),
+                Triple("Amreli District President", "Atulbhai Kanani", "Amreli"),
+                Triple("Dang District President", "Kishorebhai Gavit", "The Dangs"),
+                Triple("Tapi District President", "Suraj Vasava", "Tapi"),
+                Triple("Valsad District President", "Hemant Kansara", "Valsad"),
+                Triple("Bharuch District President", "Prakash Modi", "Bharuch"),
+                Triple("Narmada District President", "Neel Rao", "Narmada"),
+                Triple("Chhota Udaipur District President", "Umesh Rathwa", "Chota Udaipur"),
+                Triple("Anand District President", "Sanjay Patel", "Anand"),
+                Triple("Dahod District President", "Snehal Dharia", "Dohad"),
+                Triple("Kutch District President", "Devji Varchand", "Kachchh"),
+                Triple("Sabarkantha District President", "Kanubhai Patel", "Sabar Kantha"),
+                Triple("Aravalli District President", "Bhikhaji Thakor", "Aravalli"),
+                Triple("Devbhoomi Dwarka District President", "Mayur Gadhvi", "Devbhumi Dwarka"),
+                Triple("Morbi District President", "Jayanti Rajkotia", "Morbi"),
+                Triple("Gir Somnath District President", "Sanjay Parmar", "Gir Somnath"),
+                Triple("Botad District President", "Mayur Patel", "Botad"),
+                Triple("Surendranagar District President", "Hitendra Singh Chauhan", "Surendranagar")
+            )
 
             stateHeads(
                 "BJP_STATE", n, "State President", bjpStateRoster,
@@ -309,10 +524,63 @@ object PartySeedData {
             held("INC_DIST_PUNE_W", "DISTRICT", mh, "Pune West City President", "Deepti Chaudhari", incPune, "Maharashtra", "Pune")
 
             val dl = held("INC_STATE_DL", "STATE", n, "PCC President (Delhi)", "Devender Yadav", incDelhi, "Delhi")
-            open("INC_DIST_ND", "DISTRICT", dl, "New Delhi DCC President", "Delhi", "New Delhi")
+            held("INC_DIST_ND", "DISTRICT", dl, "New Delhi DCC President", "Mohinder Mangla", incDlDistricts, "Delhi", "New Delhi")
+            districtHeads(
+                "INC_DIST_DL", dl, "Delhi", incDlDistricts,
+                Triple("Adarsh Nagar DCC President", "Siddharth Rao", "North West"),
+                Triple("Chandni Chowk DCC President", "Mohammed Usman", "Central"),
+                Triple("Karawal Nagar DCC President", "Mangesh Tyagi", "North East"),
+                Triple("Babarpur DCC President", "Raj Kumar Jain", "North East"),
+                Triple("Patparganj DCC President", "Vijender Choudary", "East"),
+                Triple("Krishna Nagar DCC President", "Sumit Sharma", "Shahdara"),
+                Triple("Karol Bagh DCC President", "Mahender Bhaskar", "Central"),
+                Triple("Rohini DCC President", "Indrajeet Singh", "North West"),
+                Triple("Kirari DCC President", "Varun Dhaka", "North West"),
+                Triple("Tilak Nagar DCC President", "Amandeep Singh Sudan", "West"),
+                Triple("Najafgarh DCC President", "Rajesh Yadav", "South West"),
+                Triple("Mehrauli DCC President", "Virender Sharma", "South"),
+                Triple("Badarpur DCC President", "Harsh Choudhary", "South East")
+            )
 
             val ka = held("INC_STATE_KA", "STATE", n, "PCC President (Karnataka)", "B. K. Hariprasad", incKarnataka, "Karnataka")
-            open("INC_DIST_BLR", "DISTRICT", ka, "Bengaluru DCC President", "Karnataka", "Bangalore")
+            districtHeads(
+                "INC_DIST_KA", ka, "Karnataka", incKaDistricts,
+                Triple("Bengaluru North DCC President", "Abdul Wajid", "Bangalore"),
+                Triple("Bengaluru South DCC President", "O. Manjunath", "Bangalore"),
+                Triple("Bengaluru East DCC President", "D. K. Mohan Babu", "Bangalore"),
+                Triple("Bengaluru West DCC President", "Hanumantharayappa", "Bangalore"),
+                Triple("Bengaluru Central DCC President", "J. Saravanan", "Bangalore"),
+                Triple("Bengaluru Rural DCC President", "C. Prasanna Kumar", "Bengaluru Rural"),
+                Triple("Bagalkot DCC President", "Dayanand S. Patil", "Bagalkote"),
+                Triple("Chikkodi DCC President", "Lakshmanrao Chingale", "Belagavi"),
+                Triple("Belagavi City DCC President", "Rajasaleem Khateeb", "Belagavi"),
+                Triple("Belagavi Rural DCC President", "Basavaraj Shegavi", "Belagavi"),
+                Triple("Ballari City DCC President", "Allam Prashanth", "Ballari"),
+                Triple("Ballari Rural DCC President", "K. Mallikarjun", "Ballari"),
+                Triple("Bidar DCC President", "Abdul Mannan Seth", "Bidar"),
+                Triple("Chamarajanagar DCC President", "J. Yogesh", "Chamarajanagara"),
+                Triple("Chikkamagaluru DCC President", "H. P. Manjegowda", "Chikkamagaluru"),
+                Triple("Dakshina Kannada DCC President", "Padmaraj R. Poojary", "Dakshina Kannada"),
+                Triple("Davanagere DCC President", "Ibrahim Khalilullah", "Davanagere"),
+                Triple("Dharwad Rural DCC President", "Chandrashekhar Juttal", "Dharwad"),
+                Triple("Hubballi-Dharwad City DCC President", "Sadanand V. Danganavar", "Dharwad"),
+                Triple("Gadag DCC President", "Vasanna Kurdagi", "Gadag"),
+                Triple("Kalaburagi DCC President", "Kiran A. Deshmukh", "Kalaburagi"),
+                Triple("Hassan DCC President", "Shashidhar G. B.", "Hassan"),
+                Triple("Haveri DCC President", "Sanjeev Kumar Niralagi", "Haveri"),
+                Triple("Kodagu DCC President", "Dharmaja Uthappa", "Kodagu"),
+                Triple("Kolar DCC President", "N. Narayanaswamy", "Kolar"),
+                Triple("Koppal DCC President", "M. Mallikarjuna Nagappa", "Koppal"),
+                Triple("Mandya DCC President", "Kumar Koppa", "Mandya"),
+                Triple("Mysuru City DCC President", "R. Murthy", "Mysuru"),
+                Triple("Mysuru Rural DCC President", "Biri Hundi Basavanna", "Mysuru"),
+                Triple("Raichur DCC President", "K. Shantappa", "Raichur"),
+                Triple("Ramanagara DCC President", "C. N. Venkatesh", "Ramanagara"),
+                Triple("Shivamogga DCC President", "H. C. Yogesh", "Shivamogga"),
+                Triple("Udupi DCC President", "Kishan Kumar Hegde", "Udupi"),
+                Triple("Uttara Kannada DCC President", "Gajanana Timma Naik", "Uttara Kannada"),
+                Triple("Yadgir DCC President", "Basareddy M. Patil", "Yadgir")
+            )
 
             val up = held("INC_STATE_UP", "STATE", n, "PCC President (Uttar Pradesh)", "Aradhana Misra", incUp, "Uttar Pradesh")
             open("INC_DIST_LKO", "DISTRICT", up, "Lucknow DCC President", "Uttar Pradesh", "Lucknow")
@@ -390,8 +658,6 @@ object PartySeedData {
         seed("NCP(SP)") {
             val n = held("NCP_NAT_PRES", "NATIONAL", null, "National President", "Sharad Pawar", ncpPawar)
             held("NCP_NAT_WP", "NATIONAL_WORKING", n, "National Working President", "Supriya Sule", ncpSule)
-            open("NCP_NAT_GS_ORG", "NATIONAL_GS_ORG", n, "General Secretary (Organisation)")
-            open("NCP_NAT_TREAS", "NATIONAL_TREASURER", n, "National Treasurer")
             val mh = held("NCP_STATE_MH", "STATE", n, "State President (Maharashtra)", "Shashikant Shinde", ncpShinde, "Maharashtra")
             // Pune city was split into two units in August 2026.
             held("NCP_DIST_PUNE_W", "DISTRICT", mh, "Pune West City President", "Vishal Tambe", ncpPune, "Maharashtra", "Pune")
@@ -405,7 +671,7 @@ object PartySeedData {
             held("TMC_NAT_GS", "NATIONAL_GS", n, "National General Secretary", "Abhishek Banerjee", tmcAbhishek)
             held("TMC_NAT_PARL", "NATIONAL", n, "Leader in Lok Sabha", "Abhishek Banerjee", tmcAbhishek)
             val wb = held("TMC_STATE_WB", "STATE", n, "State President (West Bengal)", "Mamata Banerjee", tmcMamata, "West Bengal")
-            open("TMC_DIST_KOL", "DISTRICT", wb, "Kolkata District President", "West Bengal", "Kolkata")
+            held("TMC_DIST_KOL", "DISTRICT", wb, "North Kolkata Organisational District Chief", "Kunal Ghosh", tmcNorthKolkata, "West Bengal", "Kolkata")
             open("TMC_STATE_TR", "STATE", n, "State President (Tripura)", "Tripura")
         },
 
@@ -430,8 +696,8 @@ object PartySeedData {
             val n = held("CPIM_NAT_GS", "NATIONAL", null, "General Secretary", "M. A. Baby", cpim)
             held("CPIM_NAT_LS", "NATIONAL", n, "Leader in Lok Sabha", "K. Radhakrishnan", cpimParty)
             held("CPIM_STATE_WB", "STATE", n, "State Secretary (West Bengal)", "Md Salim", cpimBengal, "West Bengal")
-            open("CPIM_STATE_KL", "STATE", n, "State Secretary (Kerala)", "Kerala")
-            open("CPIM_STATE_TR", "STATE", n, "State Secretary (Tripura)", "Tripura")
+            held("CPIM_STATE_KL", "STATE", n, "State Secretary (Kerala)", "M. V. Govindan", cpimKerala, "Kerala")
+            held("CPIM_STATE_TR", "STATE", n, "State Secretary (Tripura)", "Jitendra Chaudhury", cpimTripura, "Tripura")
         },
         seed("NPP") {
             val n = held("NPP_NAT_PRES", "NATIONAL", null, "National President", "Conrad Sangma", npp)
@@ -496,8 +762,7 @@ object PartySeedData {
         seed("BJD") {
             val n = held("BJD_PRES", "NATIONAL", null, "President", "Naveen Patnaik", bjd)
             held("BJD_LOP", "NATIONAL", n, "Leader of the Opposition (Odisha Assembly)", "Naveen Patnaik", bjdLop, "Odisha")
-            // Vacant since Sasmit Patra resigned on 9 April 2026; no successor confirmed.
-            open("BJD_RS", "NATIONAL", n, "Leader in Rajya Sabha")
+            held("BJD_RS", "NATIONAL", n, "Leader in Rajya Sabha", "Manas Ranjan Mangaraj", bjdRs)
         },
         seed("JMM") {
             val n = held("JMM_PRES", "NATIONAL", null, "President", "Hemant Soren", jmm)

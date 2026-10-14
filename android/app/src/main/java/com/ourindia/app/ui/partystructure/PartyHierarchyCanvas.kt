@@ -370,7 +370,10 @@ private fun DotGrid(scale: () -> Float, offset: () -> Offset) {
     }
 }
 
-/** Orthogonal elbow connectors: parent stem, a bus across the children, a drop to each. */
+/**
+ * Orthogonal elbow connectors: a stem from the parent, one bus per row of children, a drop
+ * to each child. Wrapped rows hang off a trunk in the left gutter so no line crosses a card.
+ */
 @Composable
 private fun Connectors(
     chart: HierarchyChart,
@@ -386,36 +389,44 @@ private fun Connectors(
         // Divide by zoom so lines stay ~1.5dp on screen instead of thinning to hairlines.
         val base = 1.5.dp.toPx() / scale().coerceAtMost(1f)
         val lineColor = CivicColors.Navy.copy(alpha = 0.22f)
+        fun line(a: Offset, b: Offset, hot: Boolean) =
+            drawLine(if (hot) highlightColor else lineColor, a, b, if (hot) base * 1.6f else base, StrokeCap.Round)
+
         chart.units.forEach { parent ->
             if (parent.collapsed) return@forEach
             val kids = parent.unit.childIds.mapNotNull { chart.byId[it] }
             if (kids.isEmpty()) return@forEach
+            // Every child in a row shares its top edge, so rows fall out of grouping by y.
+            val rows = kids.groupBy { it.y }.toSortedMap().values.toList()
             val px = parent.centerX * d
-            val py = parent.bottom * d
-            val busY = py + ChartMetrics.V_GAP * d / 2f
-            val onPath = parent.unit.id in highlightPath && highlightUnitId != parent.unit.id
-            drawLine(if (onPath) highlightColor else lineColor, Offset(px, py), Offset(px, busY), if (onPath) base * 1.6f else base, StrokeCap.Round)
-            drawLine(
-                lineColor,
-                Offset(min(px, kids.first().centerX * d), busY),
-                Offset(max(px, kids.last().centerX * d), busY),
-                base,
-                StrokeCap.Round
-            )
-            kids.forEach { kid ->
-                val kx = kid.centerX * d
-                val kidOnPath = kid.unit.id in highlightPath
-                if (kidOnPath) {
-                    drawLine(highlightColor, Offset(px, busY), Offset(kx, busY), base * 1.6f, StrokeCap.Round)
-                }
-                drawLine(
-                    if (kidOnPath) highlightColor else lineColor,
-                    Offset(kx, busY),
-                    Offset(kx, kid.y * d),
-                    if (kidOnPath) base * 1.6f else base,
-                    StrokeCap.Round
-                )
+            val busYs = rows.map { (it.first().y - ChartMetrics.V_GAP / 2f) * d }
+            val trunk = parent.trunkX?.let { it * d }
+            val hotRow = rows.indexOfFirst { row -> row.any { it.unit.id in highlightPath } }
+            val parentHot = parent.unit.id in highlightPath && highlightUnitId != parent.unit.id
+
+            line(Offset(px, parent.bottom * d), Offset(px, busYs[0]), parentHot)
+            if (trunk != null) {
+                line(Offset(trunk, busYs[0]), Offset(trunk, busYs.last()), false)
+                if (hotRow > 0) line(Offset(trunk, busYs[0]), Offset(trunk, busYs[hotRow]), true)
             }
+            rows.forEachIndexed { r, row ->
+                val busY = busYs[r]
+                val from = if (r == 0) min(px, trunk ?: px) else trunk ?: px
+                val start = min(from, row.first().centerX * d)
+                val end = max(if (r == 0) px else from, row.last().centerX * d)
+                line(Offset(start, busY), Offset(end, busY), false)
+                row.forEach { kid ->
+                    val kx = kid.centerX * d
+                    val hot = kid.unit.id in highlightPath
+                    if (hot) {
+                        val origin = if (r == 0) px else trunk ?: px
+                        line(Offset(origin, busY), Offset(kx, busY), true)
+                    }
+                    line(Offset(kx, busY), Offset(kx, kid.y * d), hot)
+                }
+            }
+            // Row 0 also needs the stem-to-trunk span lit when the path continues below.
+            if (trunk != null && hotRow > 0) line(Offset(px, busYs[0]), Offset(trunk, busYs[0]), true)
         }
     }
 }

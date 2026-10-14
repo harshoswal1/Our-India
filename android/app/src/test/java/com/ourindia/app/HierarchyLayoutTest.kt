@@ -43,6 +43,24 @@ class HierarchyLayoutTest {
     }
 
     @Test
+    fun manyChildrenWrapIntoRowsInsteadOfOneWideRow() {
+        val many = listOf(node("root", HierarchyLevel.NATIONAL, null)) +
+            (1..7).map { node("s$it", HierarchyLevel.STATE, "root", "State $it") }
+        val chart = layoutOrgChart(buildOrgTree(many), emptySet())
+        val kids = chart.units.filter { it.unit.id != "root" }
+        val rows = kids.groupBy { it.y }
+        assertEquals(listOf(3, 3, 1), rows.toSortedMap().values.map { it.size })
+        assertTrue(chart.byId.getValue("root").trunkX != null)
+        assertTrue(chart.width <= ChartMetrics.MAX_ROW_WIDTH + ChartMetrics.H_GAP + 2 * ChartMetrics.MARGIN + 0.5f)
+        for (i in kids.indices) for (j in i + 1 until kids.size) {
+            val a = kids[i]; val b = kids[j]
+            val overlapX = a.x < b.x + ChartMetrics.UNIT_WIDTH && b.x < a.x + ChartMetrics.UNIT_WIDTH
+            val overlapY = a.y < b.bottom && b.y < a.bottom
+            assertFalse("${a.unit.id} overlaps ${b.unit.id}", overlapX && overlapY)
+        }
+    }
+
+    @Test
     fun collapsingHidesDescendantsAndLayoutNeverOverlaps() {
         val tree = buildOrgTree(nodes)
         assertEquals(setOf("mh"), tree.defaultCollapsed())

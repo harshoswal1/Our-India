@@ -22,6 +22,11 @@ object ChartMetrics {
     const val V_GAP = 64f
     const val MARGIN = 48f
 
+    // Children wrap after this many cards. One unbroken row put BJP's 36 state units
+    // ~10,000dp wide and an expanded Maharashtra (60+ district units) wider still.
+    const val MAX_ROW_CARDS = 3
+    const val MAX_ROW_WIDTH = UNIT_WIDTH * MAX_ROW_CARDS + H_GAP * (MAX_ROW_CARDS - 1)
+
     fun unitHeight(memberCount: Int, hasChildren: Boolean): Float =
         HEADER_HEIGHT + HEAD_ROW_HEIGHT +
             (memberCount - 1).coerceAtLeast(0) * MEMBER_ROW_HEIGHT +
@@ -67,7 +72,9 @@ data class PlacedUnit(
     val x: Float,
     val y: Float,
     val height: Float,
-    val collapsed: Boolean
+    val collapsed: Boolean,
+    /** x of the vertical trunk joining wrapped child rows; null when children fit one row. */
+    val trunkX: Float? = null
 ) {
     val centerX: Float get() = x + ChartMetrics.UNIT_WIDTH / 2f
     val bottom: Float get() = y + height
@@ -86,7 +93,11 @@ private val memberOrder = compareBy<PartyTreeNode>({ it.level.tier }, { it.roleT
 fun unitTitle(head: PartyTreeNode): String = when (head.level.groupLabel) {
     "National" -> "National"
     "State" -> head.state ?: "State"
-    "District" -> head.district ?: head.state ?: "District"
+    // Titled from the post, not the map district: "Ratnagiri North" and "Ratnagiri South"
+    // share one boundary-file district but are separate units.
+    "District" -> head.roleTitle.substringAfter('(', "").substringBefore(')').trim().ifEmpty {
+        head.roleTitle.removeSuffix(" President").removeSuffix(" Chief").removeSuffix(" DCC").trim()
+    }.ifEmpty { head.district ?: head.state ?: "District" }
     // "Ward 101 President (Bandra West)" -> "Bandra West"
     else -> head.roleTitle.substringAfter('(', "").substringBefore(')').trim()
         .ifEmpty { head.district ?: head.state ?: head.level.groupLabel }
@@ -133,7 +144,10 @@ fun buildOrgTree(nodes: List<PartyTreeNode>): OrgTree {
     return OrgTree(units, rootIds, unitOfNode)
 }
 
-/** Top-down tidy layout: each card centred over its visible children, siblings never overlap. */
+/**
+ * Top-down tidy layout. Children sit in rows of at most [ChartMetrics.MAX_ROW_WIDTH]; a
+ * parent is centred over its children, and wrapped rows hang off a trunk in the left gutter.
+ */
 fun layoutOrgChart(tree: OrgTree, collapsed: Set<String>): HierarchyChart {
     if (tree.rootIds.isEmpty()) return HierarchyChart.Empty
     val m = ChartMetrics
@@ -142,33 +156,74 @@ fun layoutOrgChart(tree: OrgTree, collapsed: Set<String>): HierarchyChart {
     fun visibleKids(id: String) = if (id in collapsed) emptyList() else unit(id).childIds
 
     val widths = HashMap<String, Float>()
-    fun measure(id: String): Float = widths[id] ?: run {
-        val k = visibleKids(id)
-        val w = if (k.isEmpty()) m.UNIT_WIDTH
-        else maxOf(m.UNIT_WIDTH, k.sumOf { measure(it).toDouble() }.toFloat() + m.H_GAP * (k.size - 1))
-        widths[id] = w
-        w
+    val rowsMemo = HashMap<String, List<List<String>>>()
+    lateinit var measure: (String) -> Float
+
+    fun rowWidth(row: List<String>) = row.sumOf { measure(it).toDouble() }.toFloat() + m.H_GAP * (row.size - 1)
+
+    fun rows(id: String): List<List<String>> = rowsMemo[id] ?: run {
+        val out = mutableListOf<MutableList<String>>()
+        var used = 0f
+        visibleKids(id).forEach { c ->
+            val w = measure(c)
+            if (out.isEmpty() || used + m.H_GAP + w > m.MAX_ROW_WIDTH) {
+                out += mutableListOf(c)
+                used = w
+            } else {
+                out.last() += c
+                used += m.H_GAP + w
+            }
+        }
+        rowsMemo[id] = out
+        out
+    }
+
+    measure = { id ->
+        widths[id] ?: run {
+            val rs = rows(id)
+            val w = if (rs.isEmpty()) m.UNIT_WIDTH
+            else maxOf(m.UNIT_WIDTH, rs.maxOf { rowWidth(it) } + if (rs.size > 1) m.H_GAP else 0f)
+            widths[id] = w
+            w
+        }
     }
 
     val placed = ArrayList<PlacedUnit>(tree.units.size)
-    val xs = HashMap<String, Float>()
-    fun place(id: String, left: Float, top: Float) {
+
+    /** Places a subtree and returns its bottom edge. */
+    fun place(id: String, left: Float, top: Float): Float {
         val u = unit(id)
         val h = m.unitHeight(u.members.size, u.childIds.isNotEmpty())
-        val k = visibleKids(id)
-        val x = if (k.isEmpty()) {
-            left + (measure(id) - m.UNIT_WIDTH) / 2f
-        } else {
-            val kidsWidth = k.sumOf { measure(it).toDouble() }.toFloat() + m.H_GAP * (k.size - 1)
-            var cursor = left + (measure(id) - kidsWidth) / 2f
-            k.forEach {
-                place(it, cursor, top + h + m.V_GAP)
-                cursor += measure(it) + m.H_GAP
-            }
-            (xs.getValue(k.first()) + xs.getValue(k.last())) / 2f
+        val rs = rows(id)
+        val w = measure(id)
+        val isCollapsed = id in collapsed && u.childIds.isNotEmpty()
+        if (rs.isEmpty()) {
+            placed += PlacedUnit(u, left + (w - m.UNIT_WIDTH) / 2f, top, h, isCollapsed)
+            return top + h
         }
-        xs[id] = x
-        placed += PlacedUnit(u, x, top, h, collapsed = id in collapsed && u.childIds.isNotEmpty())
+        val gutter = if (rs.size > 1) m.H_GAP else 0f
+        val blockW = rs.maxOf { rowWidth(it) }
+        val blockLeft = left + gutter + (w - gutter - blockW) / 2f
+        var rowTop = top + h + m.V_GAP
+        var bottom = top + h
+        rs.forEach { row ->
+            var cursor = blockLeft
+            var rowBottom = rowTop
+            row.forEach { c ->
+                rowBottom = maxOf(rowBottom, place(c, cursor, rowTop))
+                cursor += measure(c) + m.H_GAP
+            }
+            bottom = maxOf(bottom, rowBottom)
+            rowTop = rowBottom + m.V_GAP
+        }
+        val x = if (rs.size == 1) {
+            val kids = placed.filter { p -> p.unit.id == rs[0].first() || p.unit.id == rs[0].last() }
+            (kids.minOf { it.x } + kids.maxOf { it.x }) / 2f
+        } else {
+            blockLeft + (blockW - m.UNIT_WIDTH) / 2f
+        }
+        placed += PlacedUnit(u, x, top, h, isCollapsed, trunkX = if (rs.size > 1) blockLeft - m.H_GAP / 2f else null)
+        return bottom
     }
 
     var left = m.MARGIN

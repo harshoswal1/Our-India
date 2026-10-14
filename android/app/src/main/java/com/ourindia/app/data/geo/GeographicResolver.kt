@@ -42,16 +42,27 @@ class LocalGeographicResolver(private val context: Context) : GeographicResolver
     // exactly when they are required for resolution. The map reuses the same parse.
     val stateFeatures by lazy { loadFeatures(STATES_ASSET) }
     val districtFeatures by lazy { loadFeatures(DISTRICTS_ASSET) }
-    private val subDistrictFeatures by lazy { loadFeatures("geo/sub_districts.geojson.gz") }
+    private val subDistrictFeatures by lazy { loadFeatures(SUB_DISTRICTS_ASSET) }
 
-    /** Raw GeoJSON text of a bundled boundary file; call off the main thread. */
-    fun readGeoJson(assetPath: String): String? = try {
-        context.assets.open(assetPath).use { input ->
-            GZIPInputStream(input).bufferedReader().use { it.readText() }
+    /**
+     * Raw GeoJSON text of a bundled boundary file; call off the main thread.
+     *
+     * The packager inflates `.gz` assets and drops the extension, so the APK holds
+     * `geo/states.geojson`, not the `.gz` that sits in src/main/assets. Opening the
+     * `.gz` name threw FileNotFoundException on every device: the map drew nothing and
+     * every GPS fix resolved as "outside India". Try the packaged name first.
+     */
+    fun readGeoJson(assetPath: String): String? {
+        val plain = assetPath.removeSuffix(".gz")
+        runCatching { return context.assets.open(plain).bufferedReader().use { it.readText() } }
+        return try {
+            context.assets.open("$plain.gz").use { input ->
+                GZIPInputStream(input).bufferedReader().use { it.readText() }
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Bundled GeoJSON missing as both $plain and $plain.gz")
+            null
         }
-    } catch (e: Exception) {
-        Timber.e(e, "Failed to load/decompress bundled GeoJSON: $assetPath")
-        null
     }
 
     private fun loadFeatures(assetPath: String): FeatureCollection? =
@@ -150,8 +161,9 @@ class LocalGeographicResolver(private val context: Context) : GeographicResolver
     }
 
     companion object {
-        const val STATES_ASSET = "geo/states.geojson.gz"
-        const val DISTRICTS_ASSET = "geo/districts.geojson.gz"
+        const val STATES_ASSET = "geo/states.geojson"
+        const val DISTRICTS_ASSET = "geo/districts.geojson"
+        const val SUB_DISTRICTS_ASSET = "geo/sub_districts.geojson"
     }
 
     // ── Point-In-Polygon (Ray-Casting Algorithm) ──────────────────────────

@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -229,10 +230,13 @@ private fun IndiaMap(
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
+    var dataMissing by remember { mutableStateOf(false) }
 
     LaunchedEffect(mapView) {
         val statesJson = withContext(Dispatchers.IO) { resolver.readGeoJson(LocalGeographicResolver.STATES_ASSET) }
         val districtsJson = withContext(Dispatchers.IO) { resolver.readGeoJson(LocalGeographicResolver.DISTRICTS_ASSET) }
+        // Say so on screen rather than drawing an empty grey map.
+        dataMissing = statesJson == null
         mapView.getMapAsync { m ->
             m.uiSettings.apply {
                 isRotateGesturesEnabled = false
@@ -252,8 +256,7 @@ private fun IndiaMap(
                 s.addSource(GeoJsonSource(DISTRICTS_SRC, districtsJson ?: EMPTY_FC))
                 s.addSource(GeoJsonSource(PIN_SRC, EMPTY_FC))
                 addBoundaryLayers(s)
-                val pad = (24 * density).toInt()
-                m.moveCamera(CameraUpdateFactory.newLatLngBounds(INDIA_BOUNDS, pad, (96 * density).toInt(), pad, latestPadding() + pad))
+                fitBounds(m, mapView, INDIA_BOUNDS, density, latestPadding(), animate = false)
 
                 m.addOnMapClickListener { point ->
                     val screen = m.projection.toScreenLocation(point)
@@ -334,14 +337,37 @@ private fun IndiaMap(
             selectedState == null -> INDIA_BOUNDS
             else -> selectedDistrict?.let { resolver.boundsOf(selectedState, it) } ?: resolver.boundsOf(selectedState)
         } ?: return@LaunchedEffect
-        val pad = (24 * density).toInt()
-        m.animateCamera(
-            CameraUpdateFactory.newLatLngBounds(bounds, pad, (96 * density).toInt(), pad, latestPadding() + pad),
-            700
-        )
+        fitBounds(m, mapView, bounds, density, latestPadding(), animate = true)
     }
 
     AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+    if (dataMissing) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            EmptyState(
+                icon = Icons.Outlined.Map,
+                title = "Map data unavailable",
+                message = "The bundled state boundaries couldn't be read, so the map has nothing to draw."
+            )
+        }
+    }
+}
+
+/**
+ * Fits [bounds] above the bottom panel. Paddings are clamped to the view's real size:
+ * padding larger than the map leaves MapLibre no room and the camera lands at a broken
+ * zoom. Waits for layout so a not-yet-measured view isn't fitted against 0x0.
+ */
+private fun fitBounds(m: MapLibreMap, view: MapView, bounds: LatLngBounds, density: Float, panelPx: Int, animate: Boolean) {
+    view.doOnLayout {
+        val w = view.width
+        val h = view.height
+        if (w == 0 || h == 0) return@doOnLayout
+        val side = (24 * density).toInt().coerceAtMost(w / 8)
+        val top = (96 * density).toInt().coerceAtMost(h / 4)
+        val bottom = (panelPx + 24 * density).toInt().coerceAtMost(h / 2)
+        val update = CameraUpdateFactory.newLatLngBounds(bounds, side, top, side, bottom)
+        if (animate) m.animateCamera(update, 700) else m.moveCamera(update)
+    }
 }
 
 private fun addBoundaryLayers(s: Style) {
