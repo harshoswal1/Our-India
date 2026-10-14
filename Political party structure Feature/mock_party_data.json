@@ -1,0 +1,57 @@
+[
+  {
+    "id": "BJP_NAT_1",
+    "partyName": "BJP",
+    "level": "NATIONAL",
+    "parentId": null,
+    "roleTitle": "National President",
+    "holderName": "J. P. Nadda",
+    "state": null,
+    "district": null,
+    "versionDate": "2026-08-01"
+  },
+  {
+    "id": "BJP_NAT_SEC_1",
+    "partyName": "BJP",
+    "level": "NATIONAL",
+    "parentId": "BJP_NAT_1",
+    "roleTitle": "General Secretary (Org)",
+    "holderName": "B. L. Santhosh",
+    "state": null,
+    "district": null,
+    "versionDate": "2026-08-01"
+  },
+  {
+    "id": "BJP_STATE_MH",
+    "partyName": "BJP",
+    "level": "STATE",
+    "parentId": "BJP_NAT_1",
+    "roleTitle": "State President (Maharashtra)",
+    "holderName": "Chandrashekhar Bawankule",
+    "state": "Maharashtra",
+    "district": null,
+    "versionDate": "2026-08-01"
+  },
+  {
+    "id": "BJP_DIST_MUM",
+    "partyName": "BJP",
+    "level": "DISTRICT",
+    "parentId": "BJP_STATE_MH",
+    "roleTitle": "District Committee President",
+    "holderName": "Ashish Shelar",
+    "state": "Maharashtra",
+    "district": "Mumbai Suburban",
+    "versionDate": "2026-08-01"
+  },
+  {
+    "id": "BJP_WARD_101",
+    "partyName": "BJP",
+    "level": "WARD",
+    "parentId": "BJP_DIST_MUM",
+    "roleTitle": "Ward 101 President (Bandra)",
+    "holderName": "Rakesh Sharma",
+    "state": "Maharashtra",
+    "district": "Mumbai Suburban",
+    "versionDate": "2026-08-01"
+  }
+]

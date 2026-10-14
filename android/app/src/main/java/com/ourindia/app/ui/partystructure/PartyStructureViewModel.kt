@@ -135,10 +135,10 @@ class PartyStructureViewModel @Inject constructor(
         partyJob?.cancel()
         partyJob = viewModelScope.launch {
             partyNodeDao.observeByParty(partyShortName).collect { entities ->
-                // Rows older than the current seed (or none at all) are replaced once per
+                // Rows older than the current seed, fewer than 150, or none at all are replaced once per
                 // process, so devices holding last release's stale names pick up the fix.
                 val seed = PartySeedData.nodesFor(partyShortName)
-                val needsSeed = seed.isNotEmpty() && entities.none { it.versionDate >= PartySeedData.SEED_DATE }
+                val needsSeed = seed.isNotEmpty() && (entities.size < 150 || entities.none { it.versionDate >= PartySeedData.SEED_DATE })
                 if (needsSeed && seedAttempted.add(partyShortName)) {
                     partyNodeDao.replaceStaleSeed(partyShortName, PartySeedData.SEED_DATE, seed) // re-emits
                 } else {
@@ -538,4 +538,582 @@ class PartyStructureViewModel @Inject constructor(
     }
 
 
+
+    private suspend fun seedMockPartyData() {
+        val seeds = generateSeedNodes(_uiState.value.selectedParty)
+        partyNodeDao.deleteByParty(_uiState.value.selectedParty)
+        partyNodeDao.insertAll(seeds)
+    }
+
+    private suspend fun seedMockPartyDataForParty(party: String) {
+        val seeds = generateSeedNodes(party)
+        partyNodeDao.deleteByParty(party)
+        partyNodeDao.insertAll(seeds)
+    }
+
+    /**
+     * Generates a comprehensive position-driven hierarchy of 220+ boxes for ANY party.
+     * Includes National Apex Leadership, Frontal Wings/Morchas, State Units, District Committees,
+     * Mandal/Taluka Executives, Ward Committees, and Polling Booth Committees / Panna Pramukhs.
+     */
+    private fun generateSeedNodes(party: String): List<PartyNodeEntity> {
+        val date = "2026-08-01"
+        val nodes = mutableListOf<PartyNodeEntity>()
+        val posPlaceholder = "[Position Active]"
+
+        val meta = PartyCatalog.getParty(party)
+        val pName = meta.shortName
+        val rootLeader = if (meta.president.isNotBlank() && meta.president != "N/A") meta.president else "${pName} National President"
+        val primaryState = meta.primaryState ?: if (meta.classification == PartyClassification.NATIONAL) "Maharashtra" else "Delhi"
+        val secondState = when (primaryState) {
+            "Maharashtra" -> "Uttar Pradesh"
+            "Uttar Pradesh" -> "Bihar"
+            "Bihar" -> "Jharkhand"
+            "Tamil Nadu" -> "Puducherry"
+            "West Bengal" -> "Tripura"
+            "Andhra Pradesh" -> "Telangana"
+            "Telangana" -> "Andhra Pradesh"
+            "Karnataka" -> "Kerala"
+            "Kerala" -> "Tamil Nadu"
+            "Punjab" -> "Haryana"
+            "Haryana" -> "Punjab"
+            "Rajasthan" -> "Madhya Pradesh"
+            "Gujarat" -> "Maharashtra"
+            "Odisha" -> "West Bengal"
+            "Assam" -> "Meghalaya"
+            "Meghalaya" -> "Assam"
+            "Tripura" -> "Assam"
+            "Goa" -> "Maharashtra"
+            "Jammu & Kashmir" -> "Delhi"
+            else -> "Delhi"
+        }
+        val thirdState = when {
+            primaryState != "Karnataka" && secondState != "Karnataka" -> "Karnataka"
+            primaryState != "Gujarat" && secondState != "Gujarat" -> "Gujarat"
+            else -> "Madhya Pradesh"
+        }
+
+        // District names based on primary state
+        val (dist1, dist2, dist3) = when (primaryState) {
+            "Maharashtra" -> Triple("Mumbai", "Pune", "Nagpur")
+            "Uttar Pradesh" -> Triple("Lucknow", "Varanasi", "Kanpur")
+            "Bihar" -> Triple("Patna", "Gaya", "Muzaffarpur")
+            "Tamil Nadu" -> Triple("Chennai", "Coimbatore", "Madurai")
+            "West Bengal" -> Triple("Kolkata", "North 24 Parganas", "Howrah")
+            "Andhra Pradesh" -> Triple("Amaravati", "Visakhapatnam", "Guntur")
+            "Telangana" -> Triple("Hyderabad", "Secunderabad", "Warangal")
+            "Karnataka" -> Triple("Bengaluru Urban", "Mysuru", "Hubballi")
+            "Kerala" -> Triple("Thiruvananthapuram", "Kochi", "Kozhikode")
+            "Punjab" -> Triple("Amritsar", "Ludhiana", "Jalandhar")
+            "Haryana" -> Triple("Gurugram", "Faridabad", "Ambala")
+            "Rajasthan" -> Triple("Jaipur", "Jodhpur", "Udaipur")
+            "Gujarat" -> Triple("Ahmedabad", "Surat", "Vadodara")
+            "Odisha" -> Triple("Bhubaneswar", "Cuttack", "Puri")
+            "Jharkhand" -> Triple("Ranchi", "Jamshedpur", "Dhanbad")
+            "Assam" -> Triple("Guwahati", "Dibrugarh", "Silchar")
+            "Meghalaya" -> Triple("East Khasi Hills", "West Garo Hills", "Ri-Bhoi")
+            "Goa" -> Triple("North Goa", "South Goa", "Panaji")
+            "Jammu & Kashmir" -> Triple("Srinagar", "Jammu", "Anantnag")
+            else -> Triple("Central District", "North District", "South District")
+        }
+
+        val dist4 = "Capital District"
+
+        // Specific verified leaders for prominent parties
+        val leaderLookup = when (pName.uppercase()) {
+            "BJP" -> mapOf(
+                "ROOT" to "J. P. Nadda",
+                "PM" to "Narendra Modi",
+                "WP" to "Narendra Modi",
+                "VP1" to "Shivraj Singh Chouhan",
+                "VP2" to "Vasundhara Raje",
+                "VP3" to "Raman Singh",
+                "VP4" to "Baijayant Panda",
+                "GS_ORG" to "B. L. Santhosh",
+                "GS1" to "Arun Singh",
+                "GS2" to "Tarun Chugh",
+                "GS3" to "Vinod Tawde",
+                "GS4" to "Bandi Sanjay Kumar",
+                "TREAS" to "Rajesh Agarwal",
+                "ST1_PRES" to "Chandrashekhar Bawankule",
+                "ST1_LEADER" to "Devendra Fadnavis",
+                "ST2_PRES" to "Bhupendra Chaudhary",
+                "ST2_LEADER" to "Yogi Adityanath",
+                "ST3_PRES" to "C. R. Paatil",
+                "D1_PRES" to "Ashish Shelar",
+                "D2_PRES" to "Dhiraj Ghate",
+                "D3_PRES" to "Jitendra Kukde"
+            )
+            "INC" -> mapOf(
+                "ROOT" to "Mallikarjun Kharge",
+                "PM" to "Rahul Gandhi",
+                "WP" to "Rahul Gandhi",
+                "VP1" to "Priyanka Gandhi Vadra",
+                "VP2" to "Sachin Pilot",
+                "VP3" to "Kumari Selja",
+                "VP4" to "Mukul Wasnik",
+                "GS_ORG" to "K. C. Venugopal",
+                "GS1" to "Jairam Ramesh",
+                "GS2" to "Randeep Surjewala",
+                "GS3" to "Jitendra Singh",
+                "GS4" to "Deepak Babaria",
+                "TREAS" to "Ajay Maken",
+                "ST1_PRES" to "Nana Patole",
+                "ST1_LEADER" to "Prithviraj Chavan",
+                "ST2_PRES" to "Ajay Rai",
+                "ST3_PRES" to "D. K. Shivakumar",
+                "D1_PRES" to "Varsha Gaikwad",
+                "D2_PRES" to "Arvind Shinde",
+                "D3_PRES" to "Vikas Thakre"
+            )
+            "AAP" -> mapOf(
+                "ROOT" to "Arvind Kejriwal",
+                "WP" to "Manish Sisodia",
+                "VP1" to "Sanjay Singh",
+                "VP2" to "Atishi",
+                "VP3" to "Raghav Chadha",
+                "GS_ORG" to "Sandeep Pathak",
+                "GS1" to "Saurabh Bharadwaj",
+                "GS2" to "Durgesh Pathak",
+                "ST1_PRES" to "Gopal Rai",
+                "ST2_PRES" to "Bhagwant Mann",
+                "ST3_PRES" to "Isudan Gadhvi"
+            )
+            "TMC" -> mapOf(
+                "ROOT" to "Mamata Banerjee",
+                "WP" to "Abhishek Banerjee",
+                "VP1" to "Sudip Bandyopadhyay",
+                "VP2" to "Derek O'Brien",
+                "GS_ORG" to "Abhishek Banerjee",
+                "GS1" to "Kalyan Banerjee",
+                "ST1_PRES" to "Subrata Bakshi"
+            )
+            "DMK" -> mapOf(
+                "ROOT" to "M. K. Stalin",
+                "WP" to "Duraimurugan",
+                "VP1" to "Udhayanidhi Stalin",
+                "VP2" to "T. R. Baalu",
+                "GS_ORG" to "Duraimurugan",
+                "GS1" to "Kanimozhi Karunanidhi",
+                "ST1_PRES" to "M. K. Stalin"
+            )
+            "SP" -> mapOf(
+                "ROOT" to "Akhilesh Yadav",
+                "WP" to "Ram Gopal Yadav",
+                "VP1" to "Shivpal Singh Yadav",
+                "VP2" to "Dimple Yadav",
+                "GS_ORG" to "Ram Gopal Yadav",
+                "GS1" to "Awadhesh Prasad",
+                "ST1_PRES" to "Naresh Uttam Patel"
+            )
+            "SHS" -> mapOf(
+                "ROOT" to "Eknath Shinde",
+                "WP" to "Shrikant Shinde",
+                "VP1" to "Uday Samant",
+                "VP2" to "Deepak Kesarkar",
+                "GS_ORG" to "Rahul Shewale",
+                "ST1_PRES" to "Eknath Shinde"
+            )
+            "SS(UBT)" -> mapOf(
+                "ROOT" to "Uddhav Thackeray",
+                "WP" to "Aaditya Thackeray",
+                "VP1" to "Sanjay Raut",
+                "VP2" to "Arvind Sawant",
+                "GS_ORG" to "Anil Parab",
+                "ST1_PRES" to "Uddhav Thackeray"
+            )
+            "NCP", "NCP(SP)" -> mapOf(
+                "ROOT" to if (pName == "NCP") "Ajit Pawar" else "Sharad Pawar",
+                "WP" to if (pName == "NCP") "Praful Patel" else "Supriya Sule",
+                "VP1" to if (pName == "NCP") "Sunil Tatkare" else "Jayant Patil",
+                "ST1_PRES" to if (pName == "NCP") "Sunil Tatkare" else "Jayant Patil"
+            )
+            "TDP" -> mapOf(
+                "ROOT" to "N. Chandrababu Naidu",
+                "WP" to "Nara Lokesh",
+                "VP1" to "Kinjarapu Ram Mohan Naidu",
+                "VP2" to "Pemmasani Chandrasekhar",
+                "ST1_PRES" to "K. Atchannaidu"
+            )
+            "YSRCP" -> mapOf(
+                "ROOT" to "Y. S. Jagan Mohan Reddy",
+                "VP1" to "V. Vijayasai Reddy",
+                "VP2" to "Y. V. Subba Reddy",
+                "ST1_PRES" to "Y. S. Jagan Mohan Reddy"
+            )
+            "BJD" -> mapOf(
+                "ROOT" to "Naveen Patnaik",
+                "VP1" to "V. K. Pandian",
+                "VP2" to "Sasmit Patra",
+                "ST1_PRES" to "Naveen Patnaik"
+            )
+            else -> emptyMap()
+        }
+
+        fun nameFor(key: String, default: String): String = leaderLookup[key] ?: default
+
+        // ═════════════════════════════════════════════════════════════════
+        // 1. NATIONAL APEX LEADERSHIP (~45 boxes)
+        // ═════════════════════════════════════════════════════════════════
+        val rootId = "${pName}_NAT_ROOT"
+        nodes.add(PartyNodeEntity(rootId, pName, "NATIONAL", null, "National President / Party Chief", nameFor("ROOT", rootLeader), null, null, date))
+
+        val natWpId = "${pName}_NAT_WP"
+        nodes.add(PartyNodeEntity(natWpId, pName, "NATIONAL_WORKING", rootId, "National Working President", nameFor("WP", posPlaceholder), null, null, date))
+
+        // National Vice Presidents (6)
+        val natVpTitles = listOf(
+            "National Vice President (Senior)",
+            "National Vice President (Policy & Research)",
+            "National Vice President (Electoral Affairs)",
+            "National Vice President (Public Outreach)",
+            "National Vice President (Grassroots Cadre)",
+            "National Vice President (Special Initiatives)"
+        )
+        for (i in 0 until 6) {
+            val key = "VP${i + 1}"
+            val fallback = if (i == 0) nameFor(key, posPlaceholder) else posPlaceholder
+            nodes.add(PartyNodeEntity("${pName}_NAT_VP_${i + 1}", pName, "NATIONAL_VP", rootId, natVpTitles[i], nameFor(key, fallback), null, null, date))
+        }
+
+        // General Secretary (Organisation) - Sangathan Mantri
+        val natGsOrgId = "${pName}_NAT_GS_ORG"
+        nodes.add(PartyNodeEntity(natGsOrgId, pName, "NATIONAL_GS_ORG", rootId, "General Secretary (Organisation)", nameFor("GS_ORG", posPlaceholder), null, null, date))
+
+        // National General Secretaries (8)
+        val gsTitles = listOf(
+            "National General Secretary (Parliamentary Affairs)",
+            "National General Secretary (Media & Communications)",
+            "National General Secretary (Western Region)",
+            "National General Secretary (Northern Region)",
+            "National General Secretary (Southern Region)",
+            "National General Secretary (Eastern Region)",
+            "National General Secretary (Training & Coordination)",
+            "National General Secretary (Special Programs)"
+        )
+        for (i in 0 until 8) {
+            val key = "GS${i + 1}"
+            nodes.add(PartyNodeEntity("${pName}_NAT_GS_${i + 1}", pName, "NATIONAL_GS", rootId, gsTitles[i], nameFor(key, posPlaceholder), null, null, date))
+        }
+
+        // National Secretaries (10)
+        val secTitles = listOf(
+            "National Secretary (Youth Engagement)",
+            "National Secretary (Women Empowerment)",
+            "National Secretary (Farmer Welfare)",
+            "National Secretary (OBC & Backward Classes)",
+            "National Secretary (SC & Dalit Affairs)",
+            "National Secretary (ST & Tribal Welfare)",
+            "National Secretary (Minority Cell Coordination)",
+            "National Secretary (Digital Outreach)",
+            "National Secretary (Electoral Logistics)",
+            "National Secretary (Discipline & Grievance)"
+        )
+        for (i in 0 until 10) {
+            nodes.add(PartyNodeEntity("${pName}_NAT_SEC_${i + 1}", pName, "NATIONAL_SECRETARY", rootId, secTitles[i], posPlaceholder, null, null, date))
+        }
+
+        // National Joint Secretaries (4)
+        for (i in 1..4) {
+            nodes.add(PartyNodeEntity("${pName}_NAT_JT_SEC_${i}", pName, "NATIONAL_JOINT_SECRETARY", rootId, "National Joint Secretary ($i)", posPlaceholder, null, null, date))
+        }
+
+        // National Treasurers (2)
+        nodes.add(PartyNodeEntity("${pName}_NAT_TREAS", pName, "NATIONAL_TREASURER", rootId, "National Treasurer", nameFor("TREAS", posPlaceholder), null, null, date))
+        nodes.add(PartyNodeEntity("${pName}_NAT_JT_TREAS", pName, "NATIONAL_TREASURER", rootId, "National Joint Treasurer", posPlaceholder, null, null, date))
+
+        // National Spokespersons (6)
+        for (i in 1..6) {
+            nodes.add(PartyNodeEntity("${pName}_NAT_SPOKES_${i}", pName, "NATIONAL", rootId, "National Spokesperson Panel ($i)", posPlaceholder, null, null, date))
+        }
+
+        // National Frontal Wings / Morchas (12 wings)
+        val frontalWings = listOf(
+            "Yuva Morcha / Youth Wing President",
+            "Mahila Morcha / Women Wing President",
+            "Kisan Morcha / Farmers Cell President",
+            "OBC Morcha National Convener",
+            "SC Morcha National Convener",
+            "ST Morcha National Convener",
+            "Minority Morcha National Convener",
+            "IT & Social Media Department Head",
+            "Legal & Human Rights Cell Convener",
+            "Medical & Healthcare Cell Convener",
+            "Vyapar / Traders Morcha Convener",
+            "Shramik / Labour Cell Convener"
+        )
+        for (i in frontalWings.indices) {
+            nodes.add(PartyNodeEntity("${pName}_NAT_WING_${i + 1}", pName, "NATIONAL_SECRETARY", rootId, frontalWings[i], posPlaceholder, null, null, date))
+        }
+
+        // ═════════════════════════════════════════════════════════════════
+        // 2. STATE UNITS (3 States, ~53 boxes)
+        // ═════════════════════════════════════════════════════════════════
+        // ── State 1 (Primary Home State, ~25 boxes) ───────────────────────
+        val st1Id = "${pName}_STATE_1"
+        nodes.add(PartyNodeEntity(st1Id, pName, "STATE", rootId, "State President ($primaryState)", nameFor("ST1_PRES", posPlaceholder), primaryState, null, date))
+        nodes.add(PartyNodeEntity("${pName}_ST1_WP", pName, "STATE_WORKING", st1Id, "State Working President", nameFor("ST1_LEADER", posPlaceholder), primaryState, null, date))
+
+        for (i in 1..4) {
+            nodes.add(PartyNodeEntity("${pName}_ST1_VP_${i}", pName, "STATE_VP", st1Id, "State Vice President ($i)", posPlaceholder, primaryState, null, date))
+        }
+        val st1GsOrgId = "${pName}_ST1_GS_ORG"
+        nodes.add(PartyNodeEntity(st1GsOrgId, pName, "STATE_GS_ORG", st1Id, "State GS (Organisation)", posPlaceholder, primaryState, null, date))
+
+        for (i in 1..4) {
+            nodes.add(PartyNodeEntity("${pName}_ST1_GS_${i}", pName, "STATE_GS", st1Id, "State General Secretary ($i)", posPlaceholder, primaryState, null, date))
+        }
+        for (i in 1..6) {
+            nodes.add(PartyNodeEntity("${pName}_ST1_SEC_${i}", pName, "STATE_SECRETARY", st1Id, "State Secretary ($i)", posPlaceholder, primaryState, null, date))
+        }
+        nodes.add(PartyNodeEntity("${pName}_ST1_TREAS", pName, "STATE_TREASURER", st1Id, "State Treasurer", posPlaceholder, primaryState, null, date))
+
+        val stateWings = listOf("Youth Wing Chief", "Mahila Morcha Chief", "Kisan Cell Chief", "IT & Social Media Head", "Legal Cell Convener")
+        for (i in stateWings.indices) {
+            nodes.add(PartyNodeEntity("${pName}_ST1_WING_${i + 1}", pName, "STATE_SECRETARY", st1Id, "State ${stateWings[i]}", posPlaceholder, primaryState, null, date))
+        }
+
+        // ── State 2 (~16 boxes) ──────────────────────────────────────────
+        val st2Id = "${pName}_STATE_2"
+        nodes.add(PartyNodeEntity(st2Id, pName, "STATE", rootId, "State President ($secondState)", nameFor("ST2_PRES", posPlaceholder), secondState, null, date))
+        nodes.add(PartyNodeEntity("${pName}_ST2_WP", pName, "STATE_WORKING", st2Id, "State Working President", nameFor("ST2_LEADER", posPlaceholder), secondState, null, date))
+
+        for (i in 1..3) {
+            nodes.add(PartyNodeEntity("${pName}_ST2_VP_${i}", pName, "STATE_VP", st2Id, "State Vice President ($i)", posPlaceholder, secondState, null, date))
+        }
+        nodes.add(PartyNodeEntity("${pName}_ST2_GS_ORG", pName, "STATE_GS_ORG", st2Id, "State GS (Organisation)", posPlaceholder, secondState, null, date))
+        for (i in 1..3) {
+            nodes.add(PartyNodeEntity("${pName}_ST2_GS_${i}", pName, "STATE_GS", st2Id, "State General Secretary ($i)", posPlaceholder, secondState, null, date))
+        }
+        for (i in 1..4) {
+            nodes.add(PartyNodeEntity("${pName}_ST2_SEC_${i}", pName, "STATE_SECRETARY", st2Id, "State Secretary ($i)", posPlaceholder, secondState, null, date))
+        }
+        nodes.add(PartyNodeEntity("${pName}_ST2_TREAS", pName, "STATE_TREASURER", st2Id, "State Treasurer", posPlaceholder, secondState, null, date))
+        nodes.add(PartyNodeEntity("${pName}_ST2_YOUTH", pName, "STATE_SECRETARY", st2Id, "State Youth Wing Chief", posPlaceholder, secondState, null, date))
+        nodes.add(PartyNodeEntity("${pName}_ST2_MAHILA", pName, "STATE_SECRETARY", st2Id, "State Mahila Morcha Chief", posPlaceholder, secondState, null, date))
+
+        // ── State 3 (~12 boxes) ──────────────────────────────────────────
+        val st3Id = "${pName}_STATE_3"
+        nodes.add(PartyNodeEntity(st3Id, pName, "STATE", rootId, "State President ($thirdState)", nameFor("ST3_PRES", posPlaceholder), thirdState, null, date))
+        for (i in 1..2) {
+            nodes.add(PartyNodeEntity("${pName}_ST3_VP_${i}", pName, "STATE_VP", st3Id, "State Vice President ($i)", posPlaceholder, thirdState, null, date))
+        }
+        nodes.add(PartyNodeEntity("${pName}_ST3_GS_ORG", pName, "STATE_GS_ORG", st3Id, "State GS (Organisation)", posPlaceholder, thirdState, null, date))
+        for (i in 1..2) {
+            nodes.add(PartyNodeEntity("${pName}_ST3_GS_${i}", pName, "STATE_GS", st3Id, "State General Secretary ($i)", posPlaceholder, thirdState, null, date))
+        }
+        for (i in 1..3) {
+            nodes.add(PartyNodeEntity("${pName}_ST3_SEC_${i}", pName, "STATE_SECRETARY", st3Id, "State Secretary ($i)", posPlaceholder, thirdState, null, date))
+        }
+        nodes.add(PartyNodeEntity("${pName}_ST3_TREAS", pName, "STATE_TREASURER", st3Id, "State Treasurer", posPlaceholder, thirdState, null, date))
+        nodes.add(PartyNodeEntity("${pName}_ST3_YOUTH", pName, "STATE_SECRETARY", st3Id, "State Youth Wing President", posPlaceholder, thirdState, null, date))
+        nodes.add(PartyNodeEntity("${pName}_ST3_MAHILA", pName, "STATE_SECRETARY", st3Id, "State Mahila Morcha President", posPlaceholder, thirdState, null, date))
+
+        // ═════════════════════════════════════════════════════════════════
+        // 3. DISTRICT LEVEL (4 Districts, ~31 boxes)
+        // ═════════════════════════════════════════════════════════════════
+        // ── District 1 (Primary District, e.g. Mumbai/Pune/Chennai, ~13 boxes) ──
+        val d1Id = "${pName}_DIST_1"
+        nodes.add(PartyNodeEntity(d1Id, pName, "DISTRICT", st1Id, "District President ($dist1)", nameFor("D1_PRES", posPlaceholder), primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_D1_WP", pName, "DISTRICT_WORKING", d1Id, "District Working President", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_D1_GS_ORG", pName, "DISTRICT_GS", d1Id, "District GS (Organisation)", posPlaceholder, primaryState, dist1, date))
+
+        for (i in 1..2) {
+            nodes.add(PartyNodeEntity("${pName}_D1_GS_${i}", pName, "DISTRICT_GS", d1Id, "District General Secretary ($i)", posPlaceholder, primaryState, dist1, date))
+            nodes.add(PartyNodeEntity("${pName}_D1_VP_${i}", pName, "DISTRICT_WORKING", d1Id, "District Vice President ($i)", posPlaceholder, primaryState, dist1, date))
+            nodes.add(PartyNodeEntity("${pName}_D1_SEC_${i}", pName, "DISTRICT_SECRETARY", d1Id, "District Secretary ($i)", posPlaceholder, primaryState, dist1, date))
+        }
+        nodes.add(PartyNodeEntity("${pName}_D1_TREAS", pName, "DISTRICT_SECRETARY", d1Id, "District Treasurer", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_D1_YOUTH", pName, "DISTRICT_SECRETARY", d1Id, "District Youth Wing President", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_D1_MAHILA", pName, "DISTRICT_SECRETARY", d1Id, "District Mahila Morcha President", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_D1_IT", pName, "DISTRICT_SECRETARY", d1Id, "District IT & Social Media Convener", posPlaceholder, primaryState, dist1, date))
+
+        // ── District 2 (~8 boxes) ─────────────────────────────────────────
+        val d2Id = "${pName}_DIST_2"
+        nodes.add(PartyNodeEntity(d2Id, pName, "DISTRICT", st1Id, "District President ($dist2)", nameFor("D2_PRES", posPlaceholder), primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_D2_GS_ORG", pName, "DISTRICT_GS", d2Id, "District GS (Organisation)", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_D2_GS_1", pName, "DISTRICT_GS", d2Id, "District General Secretary", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_D2_VP_1", pName, "DISTRICT_WORKING", d2Id, "District Vice President", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_D2_SEC_1", pName, "DISTRICT_SECRETARY", d2Id, "District Secretary", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_D2_TREAS", pName, "DISTRICT_SECRETARY", d2Id, "District Treasurer", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_D2_YOUTH", pName, "DISTRICT_SECRETARY", d2Id, "District Youth Wing Chief", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_D2_MAHILA", pName, "DISTRICT_SECRETARY", d2Id, "District Mahila Morcha Chief", posPlaceholder, primaryState, dist2, date))
+
+        // ── District 3 (~5 boxes) ─────────────────────────────────────────
+        val d3Id = "${pName}_DIST_3"
+        nodes.add(PartyNodeEntity(d3Id, pName, "DISTRICT", st1Id, "District President ($dist3)", nameFor("D3_PRES", posPlaceholder), primaryState, dist3, date))
+        nodes.add(PartyNodeEntity("${pName}_D3_GS", pName, "DISTRICT_GS", d3Id, "District General Secretary", posPlaceholder, primaryState, dist3, date))
+        nodes.add(PartyNodeEntity("${pName}_D3_VP", pName, "DISTRICT_WORKING", d3Id, "District Vice President", posPlaceholder, primaryState, dist3, date))
+        nodes.add(PartyNodeEntity("${pName}_D3_SEC", pName, "DISTRICT_SECRETARY", d3Id, "District Secretary", posPlaceholder, primaryState, dist3, date))
+        nodes.add(PartyNodeEntity("${pName}_D3_YOUTH", pName, "DISTRICT_SECRETARY", d3Id, "District Youth Chief", posPlaceholder, primaryState, dist3, date))
+
+        // ── District 4 (under State 2, ~5 boxes) ──────────────────────────
+        val d4Id = "${pName}_DIST_4"
+        nodes.add(PartyNodeEntity(d4Id, pName, "DISTRICT", st2Id, "District President ($dist4)", posPlaceholder, secondState, dist4, date))
+        nodes.add(PartyNodeEntity("${pName}_D4_GS", pName, "DISTRICT_GS", d4Id, "District General Secretary", posPlaceholder, secondState, dist4, date))
+        nodes.add(PartyNodeEntity("${pName}_D4_VP", pName, "DISTRICT_WORKING", d4Id, "District Vice President", posPlaceholder, secondState, dist4, date))
+        nodes.add(PartyNodeEntity("${pName}_D4_SEC", pName, "DISTRICT_SECRETARY", d4Id, "District Secretary", posPlaceholder, secondState, dist4, date))
+        nodes.add(PartyNodeEntity("${pName}_D4_YOUTH", pName, "DISTRICT_SECRETARY", d4Id, "District Youth Chief", posPlaceholder, secondState, dist4, date))
+
+        // ═════════════════════════════════════════════════════════════════
+        // 4. TALUKA / MANDAL / BLOCK LEVEL (5 Mandals, ~25 boxes)
+        // ═════════════════════════════════════════════════════════════════
+        val m1Id = "${pName}_MANDAL_1"
+        nodes.add(PartyNodeEntity(m1Id, pName, "TALUKA_MANDAL", d1Id, "Mandal President (Central Assembly Mandal)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M1_VP_1", pName, "TALUKA_MANDAL", m1Id, "Mandal Vice President (1)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M1_VP_2", pName, "TALUKA_MANDAL", m1Id, "Mandal Vice President (2)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M1_GS", pName, "TALUKA_GS", m1Id, "Mandal General Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M1_SEC_1", pName, "TALUKA_GS", m1Id, "Mandal Secretary (1)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M1_SEC_2", pName, "TALUKA_GS", m1Id, "Mandal Secretary (2)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M1_YOUTH", pName, "TALUKA_GS", m1Id, "Mandal Youth Wing Incharge", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M1_MAHILA", pName, "TALUKA_GS", m1Id, "Mandal Mahila Morcha Incharge", posPlaceholder, primaryState, dist1, date))
+
+        val m2Id = "${pName}_MANDAL_2"
+        nodes.add(PartyNodeEntity(m2Id, pName, "TALUKA_MANDAL", d1Id, "Mandal President (East Assembly Mandal)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M2_VP", pName, "TALUKA_MANDAL", m2Id, "Mandal Vice President", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M2_GS", pName, "TALUKA_GS", m2Id, "Mandal General Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M2_SEC", pName, "TALUKA_GS", m2Id, "Mandal Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M2_YOUTH", pName, "TALUKA_GS", m2Id, "Mandal Youth Incharge", posPlaceholder, primaryState, dist1, date))
+
+        val m3Id = "${pName}_MANDAL_3"
+        nodes.add(PartyNodeEntity(m3Id, pName, "TALUKA_MANDAL", d1Id, "Mandal President (West Assembly Mandal)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M3_VP", pName, "TALUKA_MANDAL", m3Id, "Mandal Vice President", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M3_GS", pName, "TALUKA_GS", m3Id, "Mandal General Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M3_SEC", pName, "TALUKA_GS", m3Id, "Mandal Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_M3_YOUTH", pName, "TALUKA_GS", m3Id, "Mandal Youth Incharge", posPlaceholder, primaryState, dist1, date))
+
+        val m4Id = "${pName}_MANDAL_4"
+        nodes.add(PartyNodeEntity(m4Id, pName, "TALUKA_MANDAL", d2Id, "Mandal President (Rural Tehsil Mandal)", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_M4_VP", pName, "TALUKA_MANDAL", m4Id, "Mandal Vice President", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_M4_GS", pName, "TALUKA_GS", m4Id, "Mandal General Secretary", posPlaceholder, primaryState, dist2, date))
+        nodes.add(PartyNodeEntity("${pName}_M4_SEC", pName, "TALUKA_GS", m4Id, "Mandal Secretary", posPlaceholder, primaryState, dist2, date))
+
+        val m5Id = "${pName}_MANDAL_5"
+        nodes.add(PartyNodeEntity(m5Id, pName, "TALUKA_MANDAL", d3Id, "Mandal President (Suburban Mandal)", posPlaceholder, primaryState, dist3, date))
+        nodes.add(PartyNodeEntity("${pName}_M5_GS", pName, "TALUKA_GS", m5Id, "Mandal General Secretary", posPlaceholder, primaryState, dist3, date))
+        nodes.add(PartyNodeEntity("${pName}_M5_SEC", pName, "TALUKA_GS", m5Id, "Mandal Secretary", posPlaceholder, primaryState, dist3, date))
+
+        // ═════════════════════════════════════════════════════════════════
+        // 5. WARD / SHAKHA LEVEL (8 Wards, ~25 boxes)
+        // ═════════════════════════════════════════════════════════════════
+        val w1Id = "${pName}_WARD_101"
+        nodes.add(PartyNodeEntity(w1Id, pName, "WARD", m1Id, "Ward Committee President (Ward 101)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W1_VP", pName, "WARD", w1Id, "Ward Vice President", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W1_GS", pName, "WARD_GS", w1Id, "Ward General Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W1_SEC", pName, "WARD_GS", w1Id, "Ward Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W1_YOUTH", pName, "WARD_GS", w1Id, "Ward Youth Coordinator", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W1_MAHILA", pName, "WARD_GS", w1Id, "Ward Mahila Coordinator", posPlaceholder, primaryState, dist1, date))
+
+        val w2Id = "${pName}_WARD_102"
+        nodes.add(PartyNodeEntity(w2Id, pName, "WARD", m1Id, "Ward Committee President (Ward 102)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W2_VP", pName, "WARD", w2Id, "Ward Vice President", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W2_GS", pName, "WARD_GS", w2Id, "Ward General Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W2_SEC", pName, "WARD_GS", w2Id, "Ward Secretary", posPlaceholder, primaryState, dist1, date))
+
+        val w3Id = "${pName}_WARD_103"
+        nodes.add(PartyNodeEntity(w3Id, pName, "WARD", m1Id, "Ward Committee President (Ward 103)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W3_GS", pName, "WARD_GS", w3Id, "Ward General Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W3_SEC", pName, "WARD_GS", w3Id, "Ward Secretary", posPlaceholder, primaryState, dist1, date))
+
+        val w4Id = "${pName}_WARD_104"
+        nodes.add(PartyNodeEntity(w4Id, pName, "WARD", m1Id, "Ward Committee President (Ward 104)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W4_GS", pName, "WARD_GS", w4Id, "Ward General Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W4_SEC", pName, "WARD_GS", w4Id, "Ward Secretary", posPlaceholder, primaryState, dist1, date))
+
+        val w5Id = "${pName}_WARD_105"
+        nodes.add(PartyNodeEntity(w5Id, pName, "WARD", m1Id, "Ward Committee President (Ward 105)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W5_GS", pName, "WARD_GS", w5Id, "Ward General Secretary", posPlaceholder, primaryState, dist1, date))
+
+        val w201Id = "${pName}_WARD_201"
+        nodes.add(PartyNodeEntity(w201Id, pName, "WARD", m2Id, "Ward Committee President (Ward 201)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W201_GS", pName, "WARD_GS", w201Id, "Ward General Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W201_SEC", pName, "WARD_GS", w201Id, "Ward Secretary", posPlaceholder, primaryState, dist1, date))
+
+        val w202Id = "${pName}_WARD_202"
+        nodes.add(PartyNodeEntity(w202Id, pName, "WARD", m2Id, "Ward Committee President (Ward 202)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W202_GS", pName, "WARD_GS", w202Id, "Ward General Secretary", posPlaceholder, primaryState, dist1, date))
+
+        val w203Id = "${pName}_WARD_203"
+        nodes.add(PartyNodeEntity(w203Id, pName, "WARD", m2Id, "Ward Committee President (Ward 203)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_W203_GS", pName, "WARD_GS", w203Id, "Ward General Secretary", posPlaceholder, primaryState, dist1, date))
+
+        // ═════════════════════════════════════════════════════════════════
+        // 6. POLLING BOOTH LEVEL (~44 boxes)
+        // ═════════════════════════════════════════════════════════════════
+        // ── Booth 101 (8 boxes) ──────────────────────────────────────────
+        val b101Id = "${pName}_BOOTH_101"
+        nodes.add(PartyNodeEntity(b101Id, pName, "BOOTH", w1Id, "Booth Committee President (Booth 101)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B101_SEC", pName, "BOOTH", b101Id, "Booth Secretary (Booth 101)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B101_P1", pName, "BOOTH", b101Id, "Panna Pramukh (Page 1 Incharge)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B101_P2", pName, "BOOTH", b101Id, "Panna Pramukh (Page 2 Incharge)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B101_P3", pName, "BOOTH", b101Id, "Panna Pramukh (Page 3 Incharge)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B101_YOUTH", pName, "BOOTH", b101Id, "Booth Youth Coordinator", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B101_MAHILA", pName, "BOOTH", b101Id, "Booth Mahila Coordinator", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B101_BLA", pName, "BOOTH", b101Id, "Booth Level Polling Agent (BLA-2)", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 102 (6 boxes) ──────────────────────────────────────────
+        val b102Id = "${pName}_BOOTH_102"
+        nodes.add(PartyNodeEntity(b102Id, pName, "BOOTH", w1Id, "Booth Committee President (Booth 102)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B102_SEC", pName, "BOOTH", b102Id, "Booth Secretary (Booth 102)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B102_P1", pName, "BOOTH", b102Id, "Panna Pramukh (Page 1 Incharge)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B102_P2", pName, "BOOTH", b102Id, "Panna Pramukh (Page 2 Incharge)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B102_YOUTH", pName, "BOOTH", b102Id, "Booth Youth Coordinator", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B102_MAHILA", pName, "BOOTH", b102Id, "Booth Mahila Coordinator", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 103 (4 boxes) ──────────────────────────────────────────
+        val b103Id = "${pName}_BOOTH_103"
+        nodes.add(PartyNodeEntity(b103Id, pName, "BOOTH", w1Id, "Booth Committee President (Booth 103)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B103_SEC", pName, "BOOTH", b103Id, "Booth Secretary (Booth 103)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B103_P1", pName, "BOOTH", b103Id, "Panna Pramukh (Page 1 Incharge)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B103_P2", pName, "BOOTH", b103Id, "Panna Pramukh (Page 2 Incharge)", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 104 (3 boxes) ──────────────────────────────────────────
+        val b104Id = "${pName}_BOOTH_104"
+        nodes.add(PartyNodeEntity(b104Id, pName, "BOOTH", w1Id, "Booth Committee President (Booth 104)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B104_SEC", pName, "BOOTH", b104Id, "Booth Secretary (Booth 104)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B104_P1", pName, "BOOTH", b104Id, "Panna Pramukh (Page 1 Incharge)", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 105 (2 boxes) ──────────────────────────────────────────
+        val b105Id = "${pName}_BOOTH_105"
+        nodes.add(PartyNodeEntity(b105Id, pName, "BOOTH", w1Id, "Booth Committee President (Booth 105)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B105_SEC", pName, "BOOTH", b105Id, "Booth Secretary (Booth 105)", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 106 (under Ward 102, 5 boxes) ──────────────────────────
+        val b106Id = "${pName}_BOOTH_106"
+        nodes.add(PartyNodeEntity(b106Id, pName, "BOOTH", w2Id, "Booth Committee President (Booth 106)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B106_SEC", pName, "BOOTH", b106Id, "Booth Secretary (Booth 106)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B106_P1", pName, "BOOTH", b106Id, "Panna Pramukh (Page 1)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B106_P2", pName, "BOOTH", b106Id, "Panna Pramukh (Page 2)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B106_YOUTH", pName, "BOOTH", b106Id, "Booth Youth Coordinator", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 107 (under Ward 102, 4 boxes) ──────────────────────────
+        val b107Id = "${pName}_BOOTH_107"
+        nodes.add(PartyNodeEntity(b107Id, pName, "BOOTH", w2Id, "Booth Committee President (Booth 107)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B107_SEC", pName, "BOOTH", b107Id, "Booth Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B107_P1", pName, "BOOTH", b107Id, "Panna Pramukh", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B107_MAHILA", pName, "BOOTH", b107Id, "Booth Mahila Coordinator", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 108 (under Ward 102, 3 boxes) ──────────────────────────
+        val b108Id = "${pName}_BOOTH_108"
+        nodes.add(PartyNodeEntity(b108Id, pName, "BOOTH", w2Id, "Booth Committee President (Booth 108)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B108_SEC", pName, "BOOTH", b108Id, "Booth Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B108_P1", pName, "BOOTH", b108Id, "Panna Pramukh", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 201 (under Ward 201, 5 boxes) ──────────────────────────
+        val b201Id = "${pName}_BOOTH_201"
+        nodes.add(PartyNodeEntity(b201Id, pName, "BOOTH", w201Id, "Booth Committee President (Booth 201)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B201_SEC", pName, "BOOTH", b201Id, "Booth Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B201_P1", pName, "BOOTH", b201Id, "Panna Pramukh (Page 1)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B201_P2", pName, "BOOTH", b201Id, "Panna Pramukh (Page 2)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B201_YOUTH", pName, "BOOTH", b201Id, "Booth Youth Coordinator", posPlaceholder, primaryState, dist1, date))
+
+        // ── Booth 202 (under Ward 201, 4 boxes) ──────────────────────────
+        val b202Id = "${pName}_BOOTH_202"
+        nodes.add(PartyNodeEntity(b202Id, pName, "BOOTH", w201Id, "Booth Committee President (Booth 202)", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B202_SEC", pName, "BOOTH", b202Id, "Booth Secretary", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B202_P1", pName, "BOOTH", b202Id, "Panna Pramukh", posPlaceholder, primaryState, dist1, date))
+        nodes.add(PartyNodeEntity("${pName}_B202_MAHILA", pName, "BOOTH", b202Id, "Booth Mahila Coordinator", posPlaceholder, primaryState, dist1, date))
+
+        return nodes
+    }
 }

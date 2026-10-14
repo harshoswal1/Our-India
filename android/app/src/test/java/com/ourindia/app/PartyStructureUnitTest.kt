@@ -27,6 +27,24 @@ class PartyStructureUnitTest {
         val ncp = PartyCatalog.getParty("NCP")
         assertNotNull(ncp)
         assertEquals("NCP", ncp.shortName)
+
+        // Verify exact counts: 6 National and 67 Regional
+        assertEquals(6, PartyCatalog.nationalParties.size)
+        assertEquals(67, PartyCatalog.regionalParties.size)
+        assertEquals(73, PartyCatalog.parties.size)
+
+        // Verify regional parties lookup
+        val sp = PartyCatalog.getParty("SP")
+        assertEquals("Samajwadi Party", sp.name)
+        assertEquals("Uttar Pradesh", sp.primaryState)
+
+        val dmk = PartyCatalog.getParty("DMK")
+        assertEquals("Dravida Munnetra Kazhagam", dmk.name)
+        assertEquals("Tamil Nadu", dmk.primaryState)
+
+        val tdp = PartyCatalog.getParty("TDP")
+        assertEquals("Telugu Desam Party", tdp.name)
+        assertEquals("Andhra Pradesh", tdp.primaryState)
     }
 
     @Test

@@ -1,0 +1,1032 @@
+# Our India — Master Feature Prompt
+
+Build **only one feature/module called “Our India” inside an existing native Android application**. Do not build the entire application.
+
+The feature is a **political information exploration system for India**, focused on making political-party structures, political geography, and political analytics easy to explore. It must feel **clean, professional, government-oriented, highly readable, smooth, efficient, scalable, and straightforward**. Avoid unnecessary/fancy features. Every feature should have a clear purpose.
+
+The target platform is **Android**, using **Kotlin 2.0 or the latest stable Kotlin version**, with a modern native Android approach. The implementation technology, project structure, file structure, libraries, and exact code architecture should be decided by the AI agent based on these requirements. Do not unnecessarily change the overall scope.
+
+---
+
+## 1. Main Feature Flow
+
+The overall flow must be:
+
+**Our India → Political Parties → Select Party → Political Workspace → Three Switchable Sub-Modules**
+
+### Step 1 — Political Parties
+
+The first screen of this feature should display **political parties**.
+
+Users should be able to see available political parties and select one.
+
+For example:
+
+* BJP
+* Indian National Congress
+* and other relevant parties
+
+When the user selects a party, the application should open the political workspace for that particular party.
+
+The selected party becomes the **context for all three sub-modules**.
+
+The three sub-modules must NOT behave like three unrelated features. They must all represent different ways of exploring the **same political-party data**.
+
+---
+
+# 2. Three Sub-Modules
+
+After selecting a political party, open a workspace containing three switchable sub-modules:
+
+1. **Political Hierarchy Explorer**
+2. **Political Map Explorer**
+3. **Political Analytics / Insights**
+
+The first/default sub-module should be the **Political Hierarchy Explorer**.
+
+However, the user must be able to switch between the three modules whenever they want.
+
+Do not automatically open all three simultaneously.
+
+The user should be able to change the active module through a clean, obvious module-switching UI.
+
+When switching modules, preserve the selected political party and relevant context.
+
+For example:
+
+**BJP → Maharashtra → Pune → particular politician**
+
+If the user moves between modules, the application should preserve as much relevant context as possible instead of making the user start again.
+
+The three modules should feel like different views of the same underlying political information system.
+
+---
+
+# 3. Sub-Module 1 — Political Hierarchy Explorer
+
+This is the primary and most important sub-module.
+
+The hierarchy should represent the **political structure of a selected party**, from the highest-level leadership down toward local-level political representation.
+
+The structure should behave more like an **interactive ER diagram / large PDF hierarchy / infinite graph canvas**, NOT like a normal vertical scrolling list.
+
+### Example concept
+
+If BJP is selected:
+
+**Narendra Modi → State-level structure → Maharashtra → District → Local area → Local political representatives**
+
+The exact hierarchy levels should be designed around the availability and reliability of political data.
+
+The structure should ultimately be capable of going from national level down toward extremely local areas where reliable data exists, potentially including:
+
+* National
+* State
+* Region
+* District
+* Constituency
+* Taluka / Tehsil
+* City
+* Local area
+* Ward
+* Other appropriate local administrative/political levels
+
+Do not artificially create political positions where reliable data does not exist.
+
+---
+
+## 4. Infinite Canvas / PDF-Like Interaction
+
+The hierarchy must NOT be implemented as a normal `ScrollView`.
+
+The user should experience something similar to:
+
+* Opening a huge hierarchy PDF
+* Zooming into it
+* Zooming out
+* Moving left
+* Moving right
+* Moving upward
+* Moving downward
+* Exploring different branches
+
+The hierarchy should behave like a **large virtual canvas**.
+
+The user must have complete freedom to:
+
+* Pan left/right
+* Pan up/down
+* Pinch to zoom
+* Zoom in
+* Zoom out
+* Move around the hierarchy
+* Focus on particular branches
+
+The hierarchy should be smooth and animated.
+
+### Important performance requirement
+
+Do not render thousands of political nodes simultaneously if they are not visible.
+
+Use appropriate:
+
+* Lazy rendering
+* Progressive loading
+* Viewport-based rendering
+* Level-of-detail techniques
+* On-demand hierarchy expansion
+* Efficient graph/canvas rendering
+
+Only render or load what is actually needed.
+
+---
+
+# 5. Hierarchy Visual Design
+
+The hierarchy should visually communicate relationships clearly.
+
+There should be:
+
+* Nodes/cards representing politicians
+* Connecting lines
+* Clear parent-child relationships
+* Logical grouping
+* Appropriate spacing
+* Smooth transitions
+* Expand/collapse behavior where useful
+
+For example:
+
+**National Leader**
+
+↓
+
+**State**
+
+↓
+
+**District**
+
+↓
+
+**Taluka**
+
+↓
+
+**Local Area**
+
+↓
+
+**Ward / Local Representative**
+
+The hierarchy must remain readable even when large.
+
+The user should be able to zoom out for an overview and zoom in for detailed information.
+
+At lower zoom levels, unnecessary details can be reduced.
+
+At higher zoom levels, additional information can become visible.
+
+---
+
+# 6. Politician Node
+
+A politician node should primarily contain:
+
+* Politician photo
+* Politician name
+* Political position/designation
+
+For example:
+
+**[Photo]**
+
+**Narendra Modi**
+
+**Prime Minister of India**
+
+The top few important leaders may display their photographs prominently.
+
+Avoid overcrowding nodes with too much information.
+
+The node should remain visually clean.
+
+---
+
+# 7. Politician Click → Floating Information Popup
+
+When the user clicks/taps any politician node, display a **small floating popup**.
+
+The popup should:
+
+* Appear near the selected politician where practical
+* Automatically reposition itself if required to remain visible
+* Avoid covering important content
+* Be dismissible
+* Have subtle smooth animation
+* Not unnecessarily block the hierarchy
+* Remain usable while the hierarchy is being explored
+
+The popup should contain approximately **four concise information points** about the selected politician.
+
+The exact four fields can be finalized later.
+
+The design must therefore remain extensible.
+
+The popup may initially contain things such as:
+
+* Name
+* Current position
+* Party
+* One additional important fact
+
+Do not hardcode the final four fields into the architecture.
+
+---
+
+# 8. Glassy Popup Design
+
+The popup should have a **subtle glass-like appearance**.
+
+Use:
+
+* Semi-transparent surface
+* Subtle blur/translucency where technically appropriate
+* Soft border treatment
+* Soft elevation/shadow
+* Rounded corners
+* Clear typography
+* Strong text readability
+
+Do NOT use heavy opaque blocks or aggressive colors.
+
+The glass effect must never reduce text readability.
+
+The UI should feel polished but still appropriate for a **government/public-information application**.
+
+Avoid gaming-style or excessively futuristic UI.
+
+Do not hardcode specific color values in the implementation requirements. Use the application's theme/design system appropriately.
+
+---
+
+# 9. Popup → Full Politician Profile
+
+The floating popup should itself be clickable.
+
+When the user selects the popup, navigate to a dedicated **Politician Profile / History sub-screen**.
+
+This screen should provide a much deeper understanding of that politician.
+
+It should be:
+
+* Highly readable
+* Well structured
+* Interesting to explore
+* Professional
+* Easy to scan
+
+The user should enjoy reading about the politician without the interface becoming visually overloaded.
+
+Possible information sections include:
+
+* Who the politician is
+* Background
+* Education
+* Political journey
+* Important positions
+* Timeline
+* Election history
+* Major milestones
+* Achievements
+* Other verified relevant information
+* References/sources
+
+The exact content model can be expanded later.
+
+A timeline-based presentation should be considered for political history.
+
+When the user returns, ideally return them to the relevant hierarchy context/position instead of forcing them to restart the exploration.
+
+---
+
+# 10. Sub-Module 2 — Political Map Explorer
+
+The second major sub-module is an **interactive political map of India**.
+
+Do NOT build a map engine from scratch.
+
+Use an appropriate existing Android-compatible map technology/SDK and layer the project's political data over it.
+
+The map should support:
+
+* India-level overview
+* State-level exploration
+* District-level exploration
+* More detailed administrative/local exploration where geographic data exists
+* Zoom in
+* Zoom out
+* Pan
+* Tap/click areas
+* Progressive loading
+
+The experience should feel similar to exploring a modern digital map.
+
+---
+
+# 11. Map Drill-Down Flow
+
+Example:
+
+**India**
+
+→ User zooms/clicks Maharashtra
+
+→ Maharashtra political information appears
+
+→ User zooms into Pune
+
+→ Pune-level information appears
+
+→ User continues zooming
+
+→ District / Taluka / local area / ward information appears where supported
+
+→ User selects an area
+
+→ Politicians/party information for that area appears
+
+The application should progressively reveal information according to the user's zoom level.
+
+Do not attempt to load every political detail for the entire country at once.
+
+---
+
+# 12. Political Map Visualization
+
+The map should visualize political representation.
+
+For example, when Maharashtra is selected, show how political representation is distributed among parties.
+
+Possible visualization methods include:
+
+* Choropleth-style map layers
+* Party-based area representation
+* Interactive markers
+* Bar charts
+* Donut/pie charts where appropriate
+* Other suitable data visualizations
+
+The visualization should clearly answer questions such as:
+
+**Which parties have representation in this area and how much?**
+
+However, define the meaning of terms such as “occupy” precisely.
+
+Do not make misleading claims based on unclear metrics.
+
+For example, the system could distinguish between:
+
+* Seats won
+* Elected representatives
+* Party representatives
+* Local organizational presence
+* Other measurable political metrics
+
+The visualization must always explain what the displayed number/percentage actually represents.
+
+---
+
+# 13. Map → Politician → Hierarchy Connection
+
+The map and hierarchy must be connected.
+
+For example:
+
+**User selects a local area → sees politicians → taps politician → sees popup → opens profile → can jump to that politician's position in the hierarchy.**
+
+Likewise, the hierarchy can provide a way to open the relevant map location.
+
+This creates a continuous exploration loop instead of isolated modules.
+
+---
+
+# 14. Sub-Module 3 — Political Analytics / Insights
+
+Keep political analytics separate from the map.
+
+Do NOT overload the map module with too many charts.
+
+A dedicated third sub-module should handle:
+
+* Political representation statistics
+* Party distribution
+* Area-wise comparison
+* State-wise comparison
+* District-level comparison
+* Other meaningful political analytics
+
+The analytics module should remain focused and useful.
+
+It should not become a giant generic dashboard.
+
+Possible components:
+
+* Summary statistics
+* Bar charts
+* Donut/pie charts
+* Trend visualizations
+* Comparison charts
+* Area-wise breakdowns
+* Party-wise representation
+* Other appropriate visualizations
+
+The exact chart type should be chosen according to the data rather than forcing every dataset into a pie chart.
+
+---
+
+# 15. UI / UX Philosophy
+
+The entire feature should follow these principles:
+
+**Simple**
+
+**Professional**
+
+**Government-grade**
+
+**Readable**
+
+**Fast**
+
+**Smooth**
+
+**Information-focused**
+
+**Not unnecessarily fancy**
+
+Avoid unnecessary:
+
+* Decorative animations
+* Excessive gradients
+* Excessive colors
+* Heavy visual effects
+* Gamification
+* Clutter
+* Unnecessary screens
+
+Animations should communicate interaction and movement rather than exist only for decoration.
+
+---
+
+# 16. National Identity / Background Design
+
+A concept was considered where an Indian map with subtle tricolor treatment could be used as a background.
+
+However, readability is more important.
+
+Therefore:
+
+Do NOT make a large Indian map/tricolor background dominate the interface.
+
+If national identity is represented visually, it must remain subtle and must never interfere with:
+
+* Political hierarchy
+* Map readability
+* Text
+* Charts
+* Nodes
+* Data visualization
+
+The political information must always remain visually clear.
+
+---
+
+# 17. Smooth Interaction
+
+Smoothness is a major requirement.
+
+The experience should include:
+
+* Smooth panning
+* Smooth zooming
+* Animated focus transitions
+* Smooth node expansion
+* Smooth module switching
+* Smooth popup appearance
+* Smooth navigation
+* Smooth map interaction
+
+The application should feel responsive even when working with large political datasets.
+
+Avoid animations that make the interface slower.
+
+---
+
+# 18. Search and Navigation
+
+A universal search experience should be considered so users can quickly find:
+
+* Political parties
+* Politicians
+* States
+* Districts
+* Cities
+* Local areas
+* Wards where supported
+
+Example:
+
+User searches:
+
+**“Narendra Modi”**
+
+The system should be able to take the user directly to the relevant politician.
+
+Another example:
+
+**“BJP leaders in Pune”**
+
+The system should navigate toward the appropriate political context.
+
+Search results should be connected to the hierarchy, map, and profile views.
+
+---
+
+# 19. Focus Mode / Large Hierarchy Usability
+
+Because the hierarchy can become extremely large, consider a focus mode where:
+
+* The selected branch remains prominent
+* Unrelated branches become visually less prominent
+* The user can focus on one political path
+* The overall hierarchy remains accessible
+
+This should improve readability without hiding important information permanently.
+
+---
+
+# 20. Data Architecture Concept
+
+The political dataset is potentially enormous.
+
+Do NOT scrape the internet every time a user opens a politician or map.
+
+Do NOT make live scraping the primary user-facing data source.
+
+Instead, use a **centralized political data pipeline**.
+
+Conceptually:
+
+**Trusted Sources → Data Collection → Normalization → Verification → Database → Cache/API → Android Feature**
+
+The Android application should consume prepared, verified data through APIs.
+
+---
+
+# 21. Data Sources
+
+Political data should preferably come from trustworthy sources such as:
+
+* Election-related official sources
+* Government sources
+* Official political-party sources
+* Official public records
+* Other reliable authoritative sources
+
+Do not treat random websites or AI-generated information as authoritative.
+
+The system should retain the source/reference associated with important facts.
+
+---
+
+# 22. Automated Data Updating
+
+Political positions and political representatives change over time.
+
+Therefore, the system must be **dynamic**, not permanently static.
+
+Do not require developers to manually update every politician every time something changes.
+
+The backend should periodically check trusted sources for changes.
+
+Examples:
+
+* A politician changes position
+* A new representative replaces an old one
+* A politician leaves a position
+* A new election changes representation
+* A politician dies
+* A politician is replaced
+* Administrative or political information changes
+
+The data pipeline should detect relevant changes and update the database.
+
+Show a **“Last updated”** indicator where appropriate.
+
+---
+
+# 23. Automated Verification
+
+Because political information is sensitive, verification is extremely important.
+
+Never allow AI alone to decide that a politician is:
+
+* Alive/deceased
+* Holding a particular position
+* Replaced
+* Elected
+* Affiliated with a party
+
+Use a verification pipeline.
+
+Conceptually:
+
+**Source Collection → Cross-Source Comparison → Rules → Confidence Score → Automatic Publish OR Manual Review**
+
+If multiple trusted sources agree, confidence increases.
+
+If sources disagree:
+
+**Flag the record for review.**
+
+AI may assist with:
+
+* Extracting information
+* Detecting inconsistencies
+* Summarizing
+* Matching records
+* Identifying possible changes
+
+But AI should NOT be the final authority for sensitive factual decisions.
+
+---
+
+# 24. Audit Trail and Versioning
+
+Political information changes over time.
+
+The backend should therefore conceptually support:
+
+* Data versioning
+* Previous values
+* Change history
+* Source references
+* Update timestamps
+* Verification status
+* Audit logs
+
+This makes it possible to understand:
+
+**What changed?**
+
+**When did it change?**
+
+**Where did the information come from?**
+
+**Why was it updated?**
+
+This is particularly important for a sensitive public-information system.
+
+---
+
+# 25. Efficient Data Loading
+
+The system must not load all Indian political data at once.
+
+Use a combination of:
+
+### On-demand loading
+
+Load deeper political data only when the user needs it.
+
+Example:
+
+User opens Maharashtra → load Maharashtra data.
+
+User opens Pune → load Pune data.
+
+User explores a local area → load that area's deeper data.
+
+### Local caching
+
+Frequently used data should be cached locally on the device.
+
+The Android side can maintain appropriate local cached data so users do not repeatedly download the same information.
+
+### Background synchronization
+
+Updated data can be synchronized in the background instead of forcing the user to wait.
+
+---
+
+# 26. Location-Based Personalization / Preloading
+
+One proposed optimization is to use the user's location to determine the area they are most likely to explore.
+
+If appropriate permissions are granted, use the user's approximate location to preload relevant political data.
+
+For example:
+
+If a user is located around Kolhapur, the application can prioritize relevant:
+
+* State
+* District
+* Local political data
+
+This does NOT mean loading only the user's area.
+
+It simply prioritizes likely content.
+
+Respect Android location permissions and privacy requirements.
+
+Do not make location collection mandatory unless necessary.
+
+---
+
+# 27. Popularity-Based Preloading
+
+Another optimization is to preload political information for highly searched/popular locations.
+
+For example, frequently searched cities such as:
+
+* Mumbai
+* Pune
+
+can be treated as “hot” locations.
+
+The system should not permanently hardcode popular cities.
+
+Instead, backend analytics can determine which locations are frequently requested.
+
+Conceptually:
+
+**User requests → Usage analytics → Popular locations identified → Cache/preload priority increases**
+
+This allows the system to adapt automatically.
+
+---
+
+# 28. Tiered Caching Strategy
+
+Use different caching levels conceptually:
+
+### Hot data
+
+Frequently requested locations/politicians.
+
+Keep readily available.
+
+### Warm data
+
+Moderately requested information.
+
+Keep cached but update periodically.
+
+### Cold data
+
+Rarely requested information.
+
+Fetch on demand.
+
+This reduces:
+
+* API load
+* Database load
+* Network usage
+* Loading time
+
+while maintaining a broad national dataset.
+
+---
+
+# 29. Progressive Loading
+
+Both the hierarchy and map should use progressive loading.
+
+Do not load everything simply because the user opened the feature.
+
+Example hierarchy:
+
+**National level → State level → District level → Local level**
+
+Only progressively fetch deeper information as the user explores.
+
+Example map:
+
+**India → Maharashtra → Pune → local area → ward**
+
+This is critical for performance.
+
+---
+
+# 30. Images and Media Optimization
+
+Political photographs can become a major source of bandwidth usage.
+
+Use appropriate:
+
+* Image caching
+* Resizing
+* Compression
+* Lazy loading
+* CDN/image delivery strategy
+
+Do not download high-resolution politician images unnecessarily.
+
+Load suitable image quality according to the UI/device/zoom level.
+
+---
+
+# 31. Backend / Infrastructure Concept
+
+The exact backend implementation can be selected by the AI agent, but the architecture should support:
+
+**Android Client**
+
+↓
+
+**API / Backend Layer**
+
+↓
+
+**Political Data Services**
+
+↓
+
+**Verification / Data Processing Pipeline**
+
+↓
+
+**Database**
+
+↓
+
+**Cache**
+
+↓
+
+**External Trusted Sources**
+
+The map/geospatial layer should be designed separately enough that geographic queries do not unnecessarily slow down political hierarchy queries.
+
+A suitable geospatial database/storage strategy should be used for map-related data.
+
+---
+
+# 32. Performance Architecture
+
+The system must be designed for potentially very large datasets.
+
+Important principles:
+
+* Do not render invisible hierarchy nodes
+* Do not fetch unnecessary hierarchy levels
+* Do not download unnecessary images
+* Do not scrape on user interaction
+* Cache frequently requested data
+* Preload intelligently
+* Use background synchronization
+* Use pagination/progressive retrieval where appropriate
+* Keep API responses focused
+* Use geographic filtering for map requests
+* Use efficient database queries
+* Avoid unnecessary recompositions/redraws
+* Keep animations lightweight
+* Maintain smooth gestures even with large datasets
+
+The hierarchy should remain usable even when the underlying dataset becomes extremely large.
+
+---
+
+# 33. Relationship Between the Three Modules
+
+The three modules must share the same underlying political data model.
+
+For example:
+
+**Party → BJP**
+
+can be explored through:
+
+### Hierarchy
+
+See the organizational/political relationship structure.
+
+### Map
+
+See where political representation exists geographically.
+
+### Analytics
+
+See numerical/statistical distribution.
+
+These must remain synchronized.
+
+A politician selected in one module should be identifiable in the other modules.
+
+---
+
+# 34. Example Complete User Journey
+
+Example:
+
+1. User opens **Our India**.
+2. User sees political parties.
+3. User selects **BJP**.
+4. Political workspace opens.
+5. **Political Hierarchy Explorer** is shown by default.
+6. User sees the top leadership.
+7. User zooms out and sees broader branches.
+8. User pans toward Maharashtra.
+9. User zooms into Maharashtra's hierarchy.
+10. User continues toward district/local levels.
+11. User taps a politician.
+12. A small glass-like floating popup appears.
+13. User reads the four concise information points.
+14. User taps the popup.
+15. Full politician profile/history opens.
+16. User returns to the hierarchy.
+17. The previous hierarchy context is preserved.
+18. User switches to **Political Map Explorer**.
+19. India appears on the map.
+20. User selects Maharashtra.
+21. Political representation visualization appears.
+22. User zooms toward Pune.
+23. User continues toward a smaller area.
+24. Relevant political representatives appear.
+25. User selects a politician.
+26. The politician popup/profile can be opened.
+27. User can jump to that politician's hierarchy position.
+28. User switches to **Political Analytics**.
+29. The same selected political context is used to display relevant statistics and comparisons.
+
+The experience should feel like one connected system.
+
+---
+
+# 35. Future Scalability
+
+Do not overbuild features now.
+
+The architecture should nevertheless leave room for future additions such as:
+
+* More detailed political timelines
+* Leader comparisons
+* Historical political changes
+* Time-based map visualization
+* More sophisticated analytics
+* Additional political parties
+* More granular administrative levels
+* Bookmarks/favorites
+* Sharing/deep links
+* Advanced search
+* Additional verified data sources
+
+These are future possibilities, not mandatory requirements for the current implementation.
+
+---
+
+# 36. Most Important Priorities
+
+If there is ever a conflict between visual effects and functionality, prioritize in this order:
+
+1. **Data accuracy**
+2. **Data verification**
+3. **User privacy**
+4. **Performance**
+5. **Readability**
+6. **Smooth interaction**
+7. **Clear information architecture**
+8. **Scalability**
+9. **Professional visual design**
+10. **Decorative effects**
+
+Do not sacrifice accuracy or usability to make the feature look impressive.
+
+---
+
+# 37. Final Design Direction
+
+The final feature should feel like a combination of:
+
+* A professional government information portal
+* A modern interactive map
+* A large PDF/ER-diagram-style exploration canvas
+* A clean data visualization system
+
+It should be **powerful without being complicated**.
+
+The user should be able to understand the feature immediately:
+
+**Choose a party → Explore its hierarchy → Explore it geographically → Analyze its representation.**
+
+Everything should remain connected, smooth, fast, verified, and scalable.
+
+Do not add unnecessary features simply to make the project look bigger.
+
+Build the feature around the core idea:
+
+> **Make India's political structure understandable, explorable, geographically connected, and data-driven through one smooth interactive experience.**
+
+Do not prescribe a file structure or unnecessarily dictate exact implementation code. Choose the most appropriate modern Android/Kotlin technologies and architecture based on the above requirements while preserving the complete product vision.

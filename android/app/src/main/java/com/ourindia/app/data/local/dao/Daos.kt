@@ -26,6 +26,9 @@ interface PartyNodeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(nodes: List<PartyNodeEntity>)
 
+    @Query("DELETE FROM party_structure WHERE partyName = :party")
+    suspend fun deleteByParty(party: String)
+
     @Query("DELETE FROM party_structure")
     suspend fun deleteAll()
 
