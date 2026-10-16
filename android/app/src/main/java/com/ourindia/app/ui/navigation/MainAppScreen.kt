@@ -1,6 +1,7 @@
 package com.ourindia.app.ui.navigation
 
 import android.app.Activity
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -110,7 +111,23 @@ fun MainAppScreen() {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    if (showTutorial) {
+    val crashFile = remember { java.io.File(context.filesDir, com.ourindia.app.OurIndiaApplication.CRASH_FILE) }
+    var lastCrash by remember { mutableStateOf(crashFile.takeIf { it.exists() }?.readText()) }
+    lastCrash?.let { report ->
+        AlertDialog(
+            onDismissRequest = { crashFile.delete(); lastCrash = null },
+            title = { Text("Our India closed unexpectedly") },
+            text = { Text("Sharing the error report helps us fix it. It holds only the technical error and your phone model.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, report), "Share error report"))
+                    crashFile.delete(); lastCrash = null
+                }) { Text("Share report") }
+            },
+            dismissButton = { TextButton(onClick = { crashFile.delete(); lastCrash = null }) { Text("Dismiss") } }
+        )
+    }
+    if (lastCrash != null) Unit else if (showTutorial) {
         TutorialDialog(onFinish = {
             firstRun.tutorialSeen = true
             showTutorial = false
