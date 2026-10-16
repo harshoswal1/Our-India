@@ -181,6 +181,29 @@ fun IssueDetailScreen(
                 DetailBlock("Sent to") {
                     Text(c.authorityName ?: c.administrativeArea, style = MaterialTheme.typography.titleSmall, color = CivicColors.Navy)
                     c.departmentName?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = CivicColors.TextSecondary) }
+                    // Show real department contact details from municipal data
+                    run {
+                        val authorityLabel = c.authorityName ?: c.administrativeArea
+                        val corp = com.ourindia.app.data.civic.MunicipalData.corporations.firstOrNull {
+                            it.authorityName.contains(authorityLabel.take(10), ignoreCase = true) ||
+                                authorityLabel.contains(it.city.take(10), ignoreCase = true)
+                        }
+                        val dept = corp?.let { com.ourindia.app.data.civic.MunicipalData.departmentForCategory(it, c.category) }
+                        if (dept != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text("Department: ${dept.name}", style = MaterialTheme.typography.bodySmall, color = CivicColors.CivicDeep)
+                            dept.contacts.forEach { contact ->
+                                val parts = listOfNotNull(
+                                    contact.designation.ifBlank { null },
+                                    contact.phone?.let { "☎ $it" },
+                                    contact.email?.let { "✉ $it" }
+                                ).joinToString("  ·  ")
+                                if (parts.isNotBlank()) {
+                                    Text(parts, style = MaterialTheme.typography.bodySmall, color = CivicColors.TextSecondary)
+                                }
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(8.dp))
                     DeliveryLine(c, busy = state.busy, onRetry = viewModel::retryDelivery)
                     TextButton(

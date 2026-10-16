@@ -7,7 +7,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.AddRoad
+import androidx.compose.material.icons.outlined.HealthAndSafety
+import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.Replay
+import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.outlined.ThumbUpOffAlt
+import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -55,17 +65,15 @@ fun NagrikVoiceMark(modifier: Modifier = Modifier, subtitle: String? = null) {
 // ── Categories ───────────────────────────────────────────────────────────────
 
 enum class IssueCategory(val code: String, val label: String, val icon: ImageVector, val subtypes: List<String>) {
-    ROADS("ROADS_AND_INFRASTRUCTURE", "Roads", Icons.Outlined.AddRoad, listOf("Pothole", "Broken footpath", "Damaged divider", "Speed breaker")),
-    WATER("WATER_AND_DRAINAGE", "Water & drains", Icons.Outlined.WaterDrop, listOf("Waterlogging", "Pipeline leak", "Blocked drain", "No water supply")),
-    WASTE("WASTE_MANAGEMENT", "Garbage", Icons.Outlined.DeleteOutline, listOf("Garbage pile", "Overflowing bin", "Missed pickup", "Dumping")),
-    LIGHTING("ELECTRICITY_AND_LIGHTING", "Street lights", Icons.Outlined.Lightbulb, listOf("Light not working", "Exposed wiring", "Leaning pole")),
-    HEALTH("PUBLIC_HEALTH_AND_SANITATION", "Sanitation", Icons.Outlined.HealthAndSafety, listOf("Mosquito breeding", "Dirty toilet", "Dead animal", "Open sewage")),
-    TAX("PROPERTY_TAX", "Property tax", Icons.Outlined.ReceiptLong, listOf("Wrong assessment", "Receipt not issued")),
-    SAFETY("DISASTER_AND_SAFETY", "Safety", Icons.Outlined.WarningAmber, listOf("Fallen tree", "Wall collapse risk", "Fire hazard")),
-    OTHER("OTHER_CIVIC_ISSUES", "Other", Icons.Outlined.MoreHoriz, emptyList());
+    DISASTER("DISASTER_MANAGEMENT", "Disaster Management", Icons.Outlined.WarningAmber, listOf("Flood", "Fallen tree", "Wall collapse risk", "Fire hazard", "Landslide")),
+    ELECTRICITY("ELECTRICITY_MSEDCL", "Electricity (MSEDCL)", Icons.Outlined.Lightbulb, listOf("Street light not working", "Exposed wiring", "Leaning pole", "Power outage", "Transformer issue")),
+    HEALTHCARE("HEALTHCARE_DISTRICT_HEALTH", "Healthcare", Icons.Outlined.HealthAndSafety, listOf("Mosquito breeding", "Sanitation issue", "Hospital complaint", "Vaccination", "Epidemic concern")),
+    TAX("PROPERTY_TAX", "Property Tax", Icons.Outlined.ReceiptLong, listOf("Wrong assessment", "Receipt not issued", "Billing dispute", "Online portal issue")),
+    PWD("PUBLIC_WORKS_PWD", "Public Works (PWD)", Icons.Outlined.AddRoad, listOf("Pothole", "Broken footpath", "Damaged divider", "Road repair", "Bridge issue")),
+    WATER("WATER_DEPARTMENT", "Water Dept.", Icons.Outlined.WaterDrop, listOf("Pipeline leak", "No water supply", "Contaminated water", "Blocked drain", "Waterlogging"));
 
     companion object {
-        fun of(code: String) = entries.firstOrNull { it.code == code } ?: OTHER
+        fun of(code: String) = entries.firstOrNull { it.code == code } ?: DISASTER
     }
 }
 

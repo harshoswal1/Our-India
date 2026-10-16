@@ -42,6 +42,18 @@ class CivicSession @Inject constructor(
     fun signOut() {
         prefs.edit().remove(KEY_TOKEN).remove(KEY_USER).apply()
         _user.value = null
+        // Keep municipal corp across sign-out — it's about location, not account
+    }
+
+    /** User's municipal corporation city name (from registration). Null if not set. */
+    private val _municipalCity = MutableStateFlow(prefs.getString(KEY_MUNICIPAL_CITY, null))
+    val municipalCity: StateFlow<String?> = _municipalCity.asStateFlow()
+
+    fun setMunicipalCity(city: String?) {
+        prefs.edit().apply {
+            if (city == null) remove(KEY_MUNICIPAL_CITY) else putString(KEY_MUNICIPAL_CITY, city)
+        }.apply()
+        _municipalCity.value = city
     }
 
     /** City whose reports the Issues feed shows; null = every city. Kept across sign-outs. */
@@ -61,6 +73,7 @@ class CivicSession @Inject constructor(
         const val KEY_TOKEN = "token"
         const val KEY_USER = "user"
         const val KEY_CITY = "city"
+        const val KEY_MUNICIPAL_CITY = "municipal_city"
     }
 }
 
@@ -76,15 +89,20 @@ class CivicRepository @Inject constructor(
         api.login(LoginRequest(email.trim(), password)).also(session::save)
     }
 
-    suspend fun register(name: String, email: String, password: String, phone: String?) = call {
+    suspend fun register(name: String, email: String, password: String, phone: String?, municipalCity: String? = null) = call {
         api.register(RegisterRequest(name.trim(), email.trim(), password, phone?.trim()?.ifBlank { null }))
-            .also(session::save)
+            .also { auth ->
+                session.save(auth)
+                if (!municipalCity.isNullOrBlank()) session.setMunicipalCity(municipalCity)
+            }
     }
 
     fun signOut() = session.signOut()
 
     val city: StateFlow<Authority?> get() = session.city
     fun setCity(a: Authority?) = session.setCity(a)
+
+    val municipalCity: StateFlow<String?> get() = session.municipalCity
 
     suspend fun feed(filter: String?, category: String?, lat: Double?, lng: Double?, authorityId: String? = null) =
         call { api.feed(filter = filter, category = category, authorityId = authorityId, latitude = lat, longitude = lng).complaints }

@@ -127,6 +127,39 @@ fun ReportScreen(
                         }
                     }
                 }
+                // Show department contact info from real data when category + location are known
+                state.category?.let { cat ->
+                    val target = state.target
+                    if (target != null) {
+                        val corp = com.ourindia.app.data.civic.MunicipalData.corporations.firstOrNull {
+                            it.authorityName.contains(target.name.take(10), ignoreCase = true) ||
+                                target.name.contains(it.city.take(10), ignoreCase = true)
+                        }
+                        val dept = corp?.let { com.ourindia.app.data.civic.MunicipalData.departmentForCategory(it, cat.code) }
+                        if (dept != null) {
+                            Spacer(Modifier.height(12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = CivicColors.CivicContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Goes to: ${dept.name}", style = MaterialTheme.typography.titleSmall, color = CivicColors.CivicDeep)
+                                    dept.contacts.forEach { contact ->
+                                        val info = listOfNotNull(
+                                            contact.designation.ifBlank { null },
+                                            contact.phone,
+                                            contact.email
+                                        ).joinToString(" · ")
+                                        if (info.isNotBlank()) {
+                                            Text(info, style = MaterialTheme.typography.bodySmall, color = CivicColors.Navy)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 Spacer(Modifier.height(16.dp))
                 CivicField(state.title, viewModel::setTitle, "Title", "e.g. Deep pothole outside the bus stop")
                 Spacer(Modifier.height(12.dp))
@@ -207,7 +240,7 @@ private fun PhotoSlot(photo: String?, takenAt: String?, encoding: Boolean, onTak
         }
     } else {
         Box {
-            IssueImage(photo, IssueCategory.OTHER, Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(20.dp)))
+            IssueImage(photo, IssueCategory.DISASTER, Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(20.dp)))
             // The capture time travels with the report (camera_capture_timestamp); show what's sent.
             takenAt?.let { capturedLabel(it) }?.let { label ->
                 Row(

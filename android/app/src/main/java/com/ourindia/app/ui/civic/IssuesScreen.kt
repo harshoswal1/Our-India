@@ -88,7 +88,25 @@ class IssuesViewModel @Inject constructor(
 
     init {
         refresh()
-        viewModelScope.launch { repo.authorities().onSuccess { list -> _state.update { it.copy(authorities = list) } } }
+        viewModelScope.launch {
+            repo.authorities().onSuccess { list ->
+                _state.update { it.copy(authorities = list) }
+                // Auto-filter by user's saved municipal corp from registration (only if no city chosen yet)
+                if (_state.value.city == null) {
+                    val savedCity = repo.municipalCity.value
+                    if (!savedCity.isNullOrBlank()) {
+                        val matched = list.firstOrNull { auth ->
+                            auth.name.contains(savedCity.take(8), ignoreCase = true) ||
+                                savedCity.contains(auth.name.take(8), ignoreCase = true)
+                        }
+                        if (matched != null) {
+                            _state.update { it.copy(city = matched) }
+                            refresh()
+                        }
+                    }
+                }
+            }
+        }
         viewModelScope.launch { locationStore.location.collect { loc -> _state.update { it.copy(here = loc) } } }
     }
 

@@ -38,7 +38,7 @@ class CivicLogicTest {
 
         // SQLite rows: ints for flags, extra columns the app doesn't model, nulls.
         val detail = json.decodeFromString<ComplaintDetailResponse>(
-            """{"complaint":{"id":"KMC-2026-0001","reporter_id":"u1","title":"Pothole","description":"d","category":"ROADS_AND_INFRASTRUCTURE",
+            """{"complaint":{"id":"KMC-2026-0001","reporter_id":"u1","title":"Pothole","description":"d","category":"PUBLIC_WORKS_PWD",
                "subtype":null,"photo_url":"data:image/jpeg;base64,AAAA","latitude":16.7,"longitude":74.2,"locality":"Tarabai Park",
                "administrative_area":"Kolhapur Municipal Corporation","authority_id":"auth_kmc_kolhapur","department_id":"dep_pwd",
                "email_status":"DELIVERED","resolution_status":"UNRESOLVED","support_count":3,"is_overdue":0,"flagged_count":0,
@@ -52,7 +52,7 @@ class CivicLogicTest {
     }
 
     private fun complaint(email: String, resolution: String, overdue: Int = 0) = Complaint(
-        id = "X", title = "t", category = "ROADS_AND_INFRASTRUCTURE", latitude = 0.0, longitude = 0.0,
+        id = "X", title = "t", category = "PUBLIC_WORKS_PWD", latitude = 0.0, longitude = 0.0,
         emailStatus = email, resolutionStatus = resolution, isOverdue = overdue
     )
 
@@ -65,14 +65,14 @@ class CivicLogicTest {
         // A claimed fix is not a fix until verified.
         assertEquals("Fix under review", statusLook(complaint("DELIVERED", "RESOLUTION_CLAIMED")).label)
         assertEquals("Resolved", statusLook(complaint("DELIVERED", "RESOLVED_VERIFIED")).label)
-        assertEquals(IssueCategory.OTHER, IssueCategory.of("SOMETHING_NEW"))
+        assertEquals(IssueCategory.DISASTER, IssueCategory.of("SOMETHING_NEW"))
     }
 
     @Test
     fun reportOnlyTargetsAnAuthorityWhenCoveredOrExplicitlyTest() {
         val kmc = Authority(id = "auth_kmc_kolhapur", name = "Kolhapur Municipal Corporation", code = "KMC")
         val here = ResolvedLocation(state = "Maharashtra", district = "Pune", latitude = 18.52, longitude = 73.85)
-        val base = ReportUiState(photo = "data:x", location = here, category = IssueCategory.ROADS, title = "Pothole")
+        val base = ReportUiState(photo = "data:x", location = here, category = IssueCategory.PWD, title = "Pothole")
 
         assertEquals(kmc, base.copy(coverage = Coverage.Covered(kmc, 2.0)).target)
         val outside = base.copy(coverage = Coverage.Outside(kmc, 210.0))

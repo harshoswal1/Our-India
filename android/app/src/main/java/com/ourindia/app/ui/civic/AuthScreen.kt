@@ -2,12 +2,16 @@
 
 package com.ourindia.app.ui.civic
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
@@ -25,6 +29,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.ourindia.app.data.civic.CivicRepository
+import com.ourindia.app.data.civic.MunicipalData
 import com.ourindia.app.ui.partystructure.SegmentedToggle
 import com.ourindia.app.ui.theme.CivicColors
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,15 +47,16 @@ class AuthViewModel @Inject constructor(private val repo: CivicRepository) : Vie
 
     fun signIn(email: String, password: String, onDone: () -> Unit) = perform({ repo.signIn(email, password) }, onDone)
 
-    fun register(name: String, email: String, password: String, phone: String, onDone: () -> Unit) {
+    fun register(name: String, email: String, password: String, phone: String, municipalCorp: String, onDone: () -> Unit) {
         val problem = when {
             name.isBlank() -> "Enter your name"
             !email.contains('@') -> "Enter a valid email"
             password.length < 8 -> "Use at least 8 characters for the password"
+            municipalCorp.isBlank() -> "Select your municipal corporation"
             else -> null
         }
         if (problem != null) { _state.value = AuthUiState(error = problem); return }
-        perform({ repo.register(name, email, password, phone) }, onDone)
+        perform({ repo.register(name, email, password, phone, municipalCorp) }, onDone)
     }
 
     private fun perform(call: suspend () -> Result<*>, onDone: () -> Unit) = viewModelScope.launch {
@@ -60,6 +66,7 @@ class AuthViewModel @Inject constructor(private val repo: CivicRepository) : Vie
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthScreen(onClose: () -> Unit, onSignedIn: () -> Unit, viewModel: AuthViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -69,7 +76,20 @@ fun AuthScreen(onClose: () -> Unit, onSignedIn: () -> Unit, viewModel: AuthViewM
     var phone by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
+    var selectedCorp by rememberSaveable { mutableStateOf("") }
+    var corpExpanded by remember { mutableStateOf(false) }
+    var corpSearch by rememberSaveable { mutableStateOf("") }
+    var locationGranted by rememberSaveable { mutableStateOf(false) }
 
+    val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        locationGranted = grants.values.any { it }
+    }
+    // Ask for location permission when user switches to register mode
+    LaunchedEffect(mode) {
+        if (mode == 1 && !locationGranted) {
+            locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -124,6 +144,79 @@ fun AuthScreen(onClose: () -> Unit, onSignedIn: () -> Unit, viewModel: AuthViewM
                     modifier = Modifier.fillMaxWidth(),
                     colors = fieldColors()
                 )
+
+                // Municipal Corporation picker
+                ExposedDropdownMenuBox(
+                    expanded = corpExpanded,
+                    onExpandedChange = { corpExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = if (selectedCorp.isNotBlank()) selectedCorp else corpSearch,
+                        onValueChange = { corpSearch = it; selectedCorp = ""; corpExpanded = true },
+                        label = { Text("Municipal Corporation *") },
+                        placeholder = { Text("Search your city…") },
+                        singleLine = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = corpExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        colors = fieldColors()
+                    )
+                    val filtered = remember(corpSearch) {
+                        if (corpSearch.isBlank()) MunicipalData.corporations
+                        else MunicipalData.corporations.filter {
+                            it.city.contains(corpSearch, ignoreCase = true) ||
+                                it.authorityName.contains(corpSearch, ignoreCase = true) ||
+                                it.district.contains(corpSearch, ignoreCase = true)
+                        }
+                    }
+                    ExposedDropdownMenu(
+                        expanded = corpExpanded && filtered.isNotEmpty(),
+                        onDismissRequest = { corpExpanded = false }
+                    ) {
+                        filtered.forEach { corp ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(corp.authorityName, style = MaterialTheme.typography.bodyMedium, color = CivicColors.Navy)
+                                        Text("${corp.city} · ${corp.district}", style = MaterialTheme.typography.bodySmall, color = CivicColors.TextSecondary)
+                                    }
+                                },
+                                onClick = {
+                                    selectedCorp = corp.city
+                                    corpSearch = ""
+                                    corpExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                // Location permission status row
+                Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Outlined.MyLocation,
+                        contentDescription = null,
+                        tint = if (locationGranted) CivicColors.Civic else CivicColors.Amber,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        if (locationGranted)
+                            "Live location access granted — complaints will be routed to the right department automatically."
+                        else
+                            "Location access helps route complaints correctly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CivicColors.TextSecondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (!locationGranted) {
+                        TextButton(
+                            onClick = { locationLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) { Text("Allow", color = CivicColors.CivicDeep, style = MaterialTheme.typography.labelMedium) }
+                    }
+                }
             }
             OutlinedTextField(
                 value = password,
@@ -144,7 +237,7 @@ fun AuthScreen(onClose: () -> Unit, onSignedIn: () -> Unit, viewModel: AuthViewM
             Button(
                 onClick = {
                     if (mode == 0) viewModel.signIn(email, password, onSignedIn)
-                    else viewModel.register(name, email, password, phone, onSignedIn)
+                    else viewModel.register(name, email, password, phone, selectedCorp, onSignedIn)
                 },
                 enabled = !state.busy && email.isNotBlank() && password.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = CivicColors.Civic),
