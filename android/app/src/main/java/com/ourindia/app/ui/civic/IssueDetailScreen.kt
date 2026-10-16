@@ -188,7 +188,7 @@ fun IssueDetailScreen(
                             it.authorityName.contains(authorityLabel.take(10), ignoreCase = true) ||
                                 authorityLabel.contains(it.city.take(10), ignoreCase = true)
                         }
-                        val dept = corp?.let { com.ourindia.app.data.civic.MunicipalData.departmentForCategory(it, c.category) }
+                        val dept = corp?.let { com.ourindia.app.data.civic.MunicipalData.departmentForCategory(it, IssueCategory.of(c.category).code) }
                         if (dept != null) {
                             Spacer(Modifier.height(4.dp))
                             Text("Department: ${dept.name}", style = MaterialTheme.typography.bodySmall, color = CivicColors.CivicDeep)
@@ -302,7 +302,7 @@ private fun HistoryRow(h: StatusChange, last: Boolean) {
 }
 
 @Composable
-private fun ClaimFixSheet(busy: Boolean, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
+fun ClaimFixSheet(busy: Boolean, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CivicColors.Surface) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

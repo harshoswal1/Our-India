@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ourindia.app.data.geo.LocationStore
 import com.ourindia.app.data.geo.ResolvedLocation
+import com.ourindia.app.data.leaders.LeaderUpdateDao
+import com.ourindia.app.data.leaders.LeaderUpdateEntity
+import com.ourindia.app.data.leaders.LeaderUpdateRepository
+import com.ourindia.app.data.leaders.WikiLeaders
 import com.ourindia.app.data.local.dao.PartyNodeDao
 import com.ourindia.app.data.local.entity.PartyNodeEntity
-import com.ourindia.app.data.repository.PoliticalSyncRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +22,8 @@ import javax.inject.Inject
 @HiltViewModel
 class PartyStructureViewModel @Inject constructor(
     private val partyNodeDao: PartyNodeDao,
-    private val syncRepository: PoliticalSyncRepository,
+    private val leaderUpdateDao: LeaderUpdateDao,
+    private val leaderUpdates: LeaderUpdateRepository,
     private val locationStore: LocationStore
 ) : ViewModel() {
 
@@ -42,6 +46,9 @@ class PartyStructureViewModel @Inject constructor(
     /** Node to focus once the party's rows have loaded (deep link from Home). */
     private var pendingLocate: String? = null
 
+    /** Wikipedia readings by node id; applied over the seed in [toTreeNode]. */
+    private var updates: Map<String, LeaderUpdateEntity> = emptyMap()
+
     init {
         // A fix taken on Home or Report also filters Leaders, and vice versa.
         viewModelScope.launch {
@@ -54,22 +61,46 @@ class PartyStructureViewModel @Inject constructor(
                 _uiState.update { it.copy(partiesWithData = names.toSet() + SEEDED_PARTIES) }
             }
         }
-        viewModelScope.launch { syncRepository.performDeltaSync() }
+        viewModelScope.launch {
+            leaderUpdateDao.observeAll().collect { rows ->
+                updates = rows.associateBy { it.nodeId }
+                if (rawEntitiesList.isNotEmpty()) rebuild()
+            }
+        }
+        viewModelScope.launch {
+            leaderUpdateDao.observeLastChecked().collect { d -> _uiState.update { it.copy(leadersCheckedAt = d) } }
+        }
     }
 
-    /** Pulls the latest changes from Supabase. Room re-emits the open party if rows changed. */
+    /** Checks Wikipedia now instead of waiting for the monthly job. Room re-emits on change. */
     fun refresh() {
         if (_uiState.value.isSyncing) return
         _uiState.update { it.copy(isSyncing = true) }
         viewModelScope.launch {
-            val result = runCatching { syncRepository.performDeltaSync() }.getOrElse { Result.failure(it) }
+            val result = leaderUpdates.check()
             _uiState.update {
                 it.copy(
                     isSyncing = false,
-                    userMessage = if (result.isSuccess) "Up to date" else "Couldn't reach the server — showing saved data"
+                    userMessage = result.fold(
+                        onSuccess = { n -> if (n == 0) "Checked Wikipedia — no leadership changes" else "Checked Wikipedia — $n change${if (n == 1) "" else "s"} found" },
+                        onFailure = { "Couldn't reach Wikipedia — showing saved data" }
+                    )
                 )
             }
         }
+    }
+
+    fun setStructureView(view: StructureView) = _uiState.update { it.copy(structureView = view) }
+
+    fun focusOrbit(unitId: String) = _uiState.update { it.copy(orbitUnitId = unitId) }
+
+    /** Moves the orbit one level up; false when already at the top (back then leaves the party). */
+    fun orbitUp(): Boolean {
+        val s = _uiState.value
+        if (s.structureView != StructureView.ORBIT || s.activeSubModule != WorkspaceSubModule.HIERARCHY) return false
+        val parent = s.orbitUnitId?.let { orgTree.units[it]?.parentId } ?: return false
+        _uiState.update { it.copy(orbitUnitId = parent) }
+        return true
     }
 
     fun userMessageShown() {
@@ -90,6 +121,8 @@ class PartyStructureViewModel @Inject constructor(
                 searchResults = emptyList(),
                 allNodes = emptyList(),
                 chart = HierarchyChart.Empty,
+                orgTree = OrgTree.Empty,
+                orbitUnitId = null,
                 collapsedUnitIds = emptySet(),
                 selectedNodeDetail = null,
                 focusedNodeId = null,
@@ -153,6 +186,7 @@ class PartyStructureViewModel @Inject constructor(
                 activeSubModule = WorkspaceSubModule.HIERARCHY,
                 focusedNodeId = nodeId,
                 focusRequest = it.focusRequest + 1,
+                orbitUnitId = orgTree.unitOf(nodeId)?.id ?: it.orbitUnitId,
                 selectedProfile = null,
                 selectedNodeDetail = null
             )
@@ -168,6 +202,8 @@ class PartyStructureViewModel @Inject constructor(
     fun onSearchResultChosen(node: PartyTreeNode) {
         _uiState.update { it.copy(searchQuery = "", searchResults = emptyList()) }
         locateInHierarchy(node.id)
+        // The chart pans to the card; the orbit centres the unit, so also open the person.
+        if (_uiState.value.structureView == StructureView.ORBIT) _uiState.update { it.copy(selectedNodeDetail = node) }
     }
 
     private fun search(nodes: List<PartyTreeNode>, query: String): List<PartyTreeNode> {
@@ -262,7 +298,9 @@ class PartyStructureViewModel @Inject constructor(
         } ?: return
 
         expandPathTo(deepest.id)
-        _uiState.update { it.copy(focusedNodeId = deepest.id, focusRequest = it.focusRequest + 1) }
+        _uiState.update {
+            it.copy(focusedNodeId = deepest.id, focusRequest = it.focusRequest + 1, orbitUnitId = orgTree.unitOf(deepest.id)?.id ?: it.orbitUnitId)
+        }
     }
 
     // ── State Computation ────────────────────────────────────────────
@@ -275,6 +313,9 @@ class PartyStructureViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 allNodes = nodes,
+                orgTree = orgTree,
+                // Keep the orbit where it was across data refreshes; fall back to the root.
+                orbitUnitId = it.orbitUnitId?.takeIf { id -> id in orgTree.units } ?: orgTree.rootIds.firstOrNull(),
                 chart = layoutOrgChart(orgTree, collapsed),
                 collapsedUnitIds = collapsed,
                 stateGeoDataList = calculateStateGeoData(rawEntitiesList),
@@ -292,26 +333,40 @@ class PartyStructureViewModel @Inject constructor(
 
     private fun PartyNodeEntity.toTreeNode(): PartyTreeNode {
         val levelEnum = HierarchyLevel.fromString(level)
-        val notFetched = holderName.isBlank() || holderName.contains("Not yet fetched", ignoreCase = true)
+        val update = updates[id]
+        val wikiHolder = WikiLeaders.override(holderName, update)
+        val holder = wikiHolder ?: holderName
+        val notFetched = holder.isBlank() || holder == WikiLeaders.VACANT || holder.contains("Not yet fetched", ignoreCase = true)
+        val source = if (wikiHolder != null && update != null) {
+            VerifiedSource(
+                title = "Changed on Wikipedia: ${update.pageTitle}",
+                authority = "Auto-checked, not yet verified by Our India",
+                date = update.changedAt.orEmpty(),
+                referenceUrl = "https://en.wikipedia.org/wiki/" + android.net.Uri.encode(update.pageTitle.replace(' ', '_'))
+            )
+        } else PartySeedData.sourceFor(id)
         return PartyTreeNode(
             id = id,
             partyName = partyName,
             level = levelEnum,
             parentId = parentId,
             roleTitle = roleTitle,
-            holderName = holderName,
+            holderName = holder,
             state = state,
             district = district,
             // Photo lookup matches by surname, so it is limited to the top two tiers
             // where the bundled names are unambiguous (a lower-tier "Gandhi" or "Stalin"
             // would otherwise get the wrong face).
-            photoUrl = if (levelEnum.tier <= 2 && !notFetched) getLeaderPhotoUrl(holderName) else null,
-            // "Verified" means a cited source exists, not merely that a name is present.
+            photoUrl = if (levelEnum.tier <= 2 && !notFetched) getLeaderPhotoUrl(holder) else null,
+            // "Verified" means we cited a source ourselves; a Wikipedia change is shown, linked,
+            // and marked pending until a release re-verifies it.
             verificationStatus = when {
                 notFetched -> VerificationStatus.NotYetFetched
-                PartySeedData.sourceFor(id) != null -> VerificationStatus.Verified
+                wikiHolder != null -> VerificationStatus.PendingVerification
+                source != null -> VerificationStatus.Verified
                 else -> VerificationStatus.PendingVerification
-            }
+            },
+            source = source
         )
     }
 
@@ -477,7 +532,7 @@ class PartyStructureViewModel @Inject constructor(
             education = education,
             timeline = milestones,
             keyAchievements = emptyList(),
-            verifiedSources = listOfNotNull(PartySeedData.sourceFor(node.id)),
+            verifiedSources = listOfNotNull(node.source),
             verificationStatus = node.verificationStatus
         )
     }

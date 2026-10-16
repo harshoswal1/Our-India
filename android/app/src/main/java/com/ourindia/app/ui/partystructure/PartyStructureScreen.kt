@@ -82,7 +82,8 @@ fun PartyStructureScreen(
                 uiState.activeSubModule == WorkspaceSubModule.MAP && uiState.selectedDistrict != null -> viewModel.onMapDistrictSelected(null)
                 uiState.activeSubModule == WorkspaceSubModule.MAP && uiState.selectedState != null -> viewModel.onMapStateSelected(null)
                 uiState.activeSubModule != WorkspaceSubModule.HIERARCHY -> viewModel.switchSubModule(WorkspaceSubModule.HIERARCHY)
-                else -> viewModel.navigateToPartySelector()
+                // In the orbit, back steps out one ring before it leaves the party.
+                else -> if (!viewModel.orbitUp()) viewModel.navigateToPartySelector()
             }
             FeatureScreen.PARTY_SELECTOR -> Unit
         }
@@ -323,16 +324,43 @@ private fun HierarchyTab(
                 }
             )
         } else {
-            PartyHierarchyCanvas(
-                chart = state.chart,
-                partyColor = party.color,
-                focusedNodeId = state.focusedNodeId,
-                focusRequest = state.focusRequest,
-                onNodeClicked = viewModel::onNodeClicked,
-                onToggleUnit = viewModel::toggleUnit,
-                onSetAllExpanded = viewModel::setAllExpanded,
-                contentTopInset = 80.dp
-            )
+            val orbitUnit = state.orbitUnitId
+            if (state.structureView == StructureView.ORBIT && orbitUnit != null) {
+                PartyOrbitView(
+                    tree = state.orgTree,
+                    unitId = orbitUnit,
+                    partyColor = party.color,
+                    focusedNodeId = state.focusedNodeId,
+                    onFocusUnit = viewModel::focusOrbit,
+                    onNodeClicked = viewModel::onNodeClicked,
+                    modifier = Modifier.fillMaxSize().padding(top = 124.dp)
+                )
+            } else {
+                PartyHierarchyCanvas(
+                    chart = state.chart,
+                    partyColor = party.color,
+                    focusedNodeId = state.focusedNodeId,
+                    focusRequest = state.focusRequest,
+                    onNodeClicked = viewModel::onNodeClicked,
+                    onToggleUnit = viewModel::toggleUnit,
+                    onSetAllExpanded = viewModel::setAllExpanded,
+                    contentTopInset = 128.dp
+                )
+            }
+            // Search first so its result list draws over the toggle.
+            Column(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .widthIn(max = 560.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Spacer(Modifier.height(64.dp))
+                SegmentedToggle(
+                    options = StructureView.entries.map { it.label },
+                    selectedIndex = state.structureView.ordinal,
+                    onSelect = { viewModel.setStructureView(StructureView.entries[it]) }
+                )
+            }
             HierarchySearchField(
                 query = state.searchQuery,
                 onQueryChange = viewModel::onSearchQueryChanged,

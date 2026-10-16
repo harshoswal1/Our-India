@@ -604,13 +604,20 @@ fun PositionDetailSheet(
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DetailLine(Icons.Outlined.Place, node.jurisdiction)
-                val source = PartySeedData.sourceFor(node.id)
+                val source = node.source
                 when {
                     node.isNotFetched -> DetailLine(
                         Icons.Outlined.Schedule,
                         "This post exists in the party's organisation; its current holder isn't confirmed yet."
                     )
-                    source != null -> SourceLine(source)
+                    source != null -> {
+                        if (node.verificationStatus is VerificationStatus.PendingVerification) DetailLine(
+                            Icons.Outlined.Schedule,
+                            "Wikipedia changed this post on ${source.date}. Shown as reported there; not yet checked against a news source.",
+                            tint = CivicColors.SaffronDeep
+                        )
+                        SourceLine(source)
+                    }
                     else -> DetailLine(
                         Icons.Outlined.Schedule,
                         "Named in synced records but not yet checked against a published source.",
@@ -629,7 +636,7 @@ fun PositionDetailSheet(
                     ) {
                         Icon(Icons.Outlined.AccountTree, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("In chart")
+                        Text("In structure")
                     }
                 }
                 Button(

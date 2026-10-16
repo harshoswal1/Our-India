@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Science
@@ -30,6 +31,7 @@ import com.ourindia.app.data.civic.CivicConfig
 import com.ourindia.app.data.civic.CivicRepository
 import com.ourindia.app.data.civic.CivicUser
 import com.ourindia.app.data.civic.Complaint
+import com.ourindia.app.data.leaders.LeaderUpdateDao
 import com.ourindia.app.ui.civic.IssueCategory
 import com.ourindia.app.ui.civic.IssueImage
 import com.ourindia.app.ui.civic.NagrikVoiceMark
@@ -49,15 +51,17 @@ data class MeUiState(
     val loading: Boolean = false,
     val submitted: List<Complaint> = emptyList(),
     val supported: List<Complaint> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    val leadersCheckedAt: String? = null
 )
 
 @HiltViewModel
-class MeViewModel @Inject constructor(private val repo: CivicRepository) : ViewModel() {
+class MeViewModel @Inject constructor(private val repo: CivicRepository, leaderUpdates: LeaderUpdateDao) : ViewModel() {
     private val _state = MutableStateFlow(MeUiState())
     val state = _state.asStateFlow()
 
     init {
+        viewModelScope.launch { leaderUpdates.observeLastChecked().collect { d -> _state.update { it.copy(leadersCheckedAt = d) } } }
         viewModelScope.launch {
             repo.user.collect { u ->
                 _state.update { it.copy(user = u, submitted = emptyList(), supported = emptyList()) }
@@ -79,7 +83,7 @@ class MeViewModel @Inject constructor(private val repo: CivicRepository) : ViewM
 }
 
 @Composable
-fun MeScreen(onSignIn: () -> Unit, onOpenIssue: (String) -> Unit, viewModel: MeViewModel = hiltViewModel()) {
+fun MeScreen(onSignIn: () -> Unit, onOpenIssue: (String) -> Unit, onShowTutorial: () -> Unit, viewModel: MeViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmSignOut by remember { mutableStateOf(false) }
 
@@ -128,10 +132,20 @@ fun MeScreen(onSignIn: () -> Unit, onOpenIssue: (String) -> Unit, viewModel: MeV
                 }
             }
 
+            item {
+                Surface(onClick = onShowTutorial, shape = RoundedCornerShape(16.dp), color = CivicColors.Surface, border = BorderStroke(1.dp, CivicColors.Outline)) {
+                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Outlined.HelpOutline, contentDescription = null, tint = CivicColors.Navy)
+                        Text("How Our India works", style = MaterialTheme.typography.titleSmall, color = CivicColors.Navy, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
             item { ListHeader("About the data") }
             item {
                 AboutRow(Icons.Outlined.Policy, "Party leadership",
-                    "Each named post links to the public report it was checked against. Posts we couldn't verify show as \"Not yet recorded\" rather than a guess.")
+                    "Each named post links to the public report it was checked against. Posts we couldn't verify show as \"Not yet recorded\" rather than a guess. " +
+                        "National and state heads are re-checked on Wikipedia monthly; a change shows straight away, marked as not yet verified." +
+                        (state.leadersCheckedAt?.let { " Last checked $it." } ?: ""))
             }
             if (CivicConfig.SIMULATED_DELIVERY) {
                 item {

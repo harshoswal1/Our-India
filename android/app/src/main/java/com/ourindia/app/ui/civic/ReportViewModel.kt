@@ -176,7 +176,7 @@ class ReportViewModel @Inject constructor(
         val loc = s.location ?: return
         _state.update { it.copy(stage = ReportStage.Checking) }
         viewModelScope.launch {
-            val dup = repo.duplicates(loc.latitude!!, loc.longitude!!, s.category!!.code, s.subtype.ifBlank { null })
+            val dup = repo.duplicates(loc.latitude!!, loc.longitude!!, s.category!!.serverCode, s.subtype.ifBlank { null })
                 .getOrNull()?.firstOrNull()
             if (dup != null) _state.update { it.copy(stage = ReportStage.Duplicate(dup)) } else send()
         }
@@ -206,7 +206,7 @@ class ReportViewModel @Inject constructor(
             title = (if (outside) "[Test] " else "") + s.title.trim(),
             description = s.description.trim().ifBlank { s.title.trim() } +
                 if (outside) "\n\nTest report sent from ${loc.label} (outside ${authority.name}'s area) via Our India." else "",
-            category = s.category!!.code,
+            category = s.category!!.serverCode,
             subtype = s.subtype.ifBlank { null },
             photoUrl = s.photo!!,
             latitude = loc.latitude!!,

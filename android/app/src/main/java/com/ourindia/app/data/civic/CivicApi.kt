@@ -46,6 +46,9 @@ interface CivicApi {
     @POST("complaints/{id}/claim-resolution")
     suspend fun claimResolution(@Path("id") id: String, @Body body: ClaimResolutionRequest)
 
+    @POST("complaints/{id}/report-abuse")
+    suspend fun reportAbuse(@Path("id") id: String, @Body body: Map<String, String>)
+
     @POST("complaints/{id}/retry-email")
     suspend fun retryDelivery(@Path("id") id: String, @Body body: RetryRequest = RetryRequest())
 

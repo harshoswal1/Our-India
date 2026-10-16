@@ -1,5 +1,19 @@
 package com.ourindia.app.ui.navigation
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.ourindia.app.ui.onboarding.LOCATION_PERMISSIONS
+import com.ourindia.app.ui.onboarding.LocationPromptDialog
+import com.ourindia.app.ui.onboarding.TutorialDialog
+import com.ourindia.app.ui.onboarding.canAskLocationAgain
+import com.ourindia.app.ui.onboarding.hasLocationPermission
+import com.ourindia.app.ui.onboarding.openAppSettings
+import com.ourindia.app.ui.onboarding.rememberFirstRunPrefs
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
@@ -77,6 +91,39 @@ fun MainAppScreen() {
     val resolver = remember { LocalGeographicResolver(context.applicationContext) }
     var leadersImmersive by remember { mutableStateOf(false) }
 
+    // ── First launch: tutorial, then the location prompt; later launches nudge while denied.
+    val firstRun = rememberFirstRunPrefs()
+    var showTutorial by remember { mutableStateOf(!firstRun.tutorialSeen) }
+    var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
+    var promptLocation by rememberSaveable { mutableStateOf(firstRun.tutorialSeen && !locationAllowed && !firstRun.locationNeverAsk) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        firstRun.locationAsked = true
+        locationAllowed = grants.values.any { it }
+    }
+    fun askForLocation() {
+        if (canAskLocationAgain(context as? Activity, firstRun)) permission.launch(LOCATION_PERMISSIONS) else openAppSettings(context)
+    }
+    // Coming back from Settings with the permission granted.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) locationAllowed = hasLocationPermission(context) }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    if (showTutorial) {
+        TutorialDialog(onFinish = {
+            firstRun.tutorialSeen = true
+            showTutorial = false
+            if (!locationAllowed) askForLocation()
+        })
+    } else if (promptLocation && !locationAllowed) {
+        LocationPromptDialog(
+            onAllow = { promptLocation = false; askForLocation() },
+            onNotNow = { promptLocation = false },
+            onNever = { promptLocation = false; firstRun.locationNeverAsk = true }
+        )
+    }
+
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route.orEmpty()
     val onTab = route in setOf(Routes.HOME, Routes.ISSUES, Routes.ME) || (route == Routes.LEADERS && !leadersImmersive)
@@ -98,11 +145,10 @@ fun MainAppScreen() {
             composable(Routes.HOME) {
                 HomeScreen(
                     resolver = resolver,
-                    onOpenParty = { p, n -> nav.navigate(Routes.leaders(p, n)) { popUpTo(Routes.HOME); launchSingleTop = true } },
-                    onBrowseParties = { nav.switchTab(Routes.leaders()) },
+                    locationAllowed = locationAllowed,
                     onOpenIssue = { nav.navigate(Routes.issue(it)) },
-                    onBrowseIssues = { nav.switchTab(Routes.ISSUES) },
-                    onReport = { nav.navigate(Routes.REPORT) }
+                    onReport = { nav.navigate(Routes.REPORT) },
+                    onNeedsSignIn = { nav.navigate(Routes.AUTH) }
                 )
             }
             composable(
@@ -127,7 +173,7 @@ fun MainAppScreen() {
                 )
             }
             composable(Routes.ME) {
-                MeScreen(onSignIn = { nav.navigate(Routes.AUTH) }, onOpenIssue = { nav.navigate(Routes.issue(it)) })
+                MeScreen(onSignIn = { nav.navigate(Routes.AUTH) }, onOpenIssue = { nav.navigate(Routes.issue(it)) }, onShowTutorial = { showTutorial = true })
             }
             composable(Routes.REPORT) {
                 ReportScreen(

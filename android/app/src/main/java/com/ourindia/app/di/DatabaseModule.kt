@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.ourindia.app.data.leaders.LeaderUpdateDao
 import com.ourindia.app.data.local.OurIndiaDatabase
 import com.ourindia.app.data.local.dao.PartyNodeDao
 import com.ourindia.app.data.local.dao.SyncMetadataDao
@@ -37,6 +38,13 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+/** Monthly Wikipedia check of party heads (data/leaders). Additive: no existing table changes. */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `leader_updates` (`nodeId` TEXT NOT NULL, `pageTitle` TEXT NOT NULL, `baseline` TEXT NOT NULL, `current` TEXT NOT NULL, `changedAt` TEXT, `checkedAt` TEXT NOT NULL, PRIMARY KEY(`nodeId`))")
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
@@ -51,7 +59,7 @@ object DatabaseModule {
             OurIndiaDatabase::class.java,
             "our_india_db"
         )
-        .addMigrations(MIGRATION_1_2)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
         .fallbackToDestructiveMigrationOnDowngrade()
         .build()
     }
@@ -65,4 +73,7 @@ object DatabaseModule {
     fun provideSyncMetadataDao(database: OurIndiaDatabase): SyncMetadataDao {
         return database.syncMetadataDao()
     }
+
+    @Provides
+    fun provideLeaderUpdateDao(database: OurIndiaDatabase): LeaderUpdateDao = database.leaderUpdateDao()
 }

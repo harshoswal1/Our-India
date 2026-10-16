@@ -7,6 +7,7 @@ import androidx.compose.material.icons.outlined.Map
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.ourindia.app.data.geo.ResolvedLocation
+import com.ourindia.app.data.leaders.WikiLeaders
 import com.ourindia.app.ui.theme.CivicColors
 
 /** Active App Flow Screen */
@@ -15,6 +16,8 @@ enum class FeatureScreen {
     WORKSPACE,
     POLITICIAN_PROFILE
 }
+
+enum class StructureView(val label: String) { ORBIT("Orbit"), CHART("Chart") }
 
 /** Switchable Sub-Modules within the Political Workspace */
 enum class WorkspaceSubModule(val title: String, val icon: ImageVector) {
@@ -138,16 +141,23 @@ data class PartyTreeNode(
     val state: String? = null,
     val district: String? = null,
     val photoUrl: String? = null,
-    val verificationStatus: VerificationStatus = VerificationStatus.NotYetFetched
+    val verificationStatus: VerificationStatus = VerificationStatus.NotYetFetched,
+    /** Where the holder's name comes from: the seed's citation, or a Wikipedia change. */
+    val source: VerifiedSource? = null
 ) {
     val isNotFetched: Boolean
         get() = holderName.isBlank() ||
+                holderName == WikiLeaders.VACANT ||
                 holderName.contains("Not yet fetched", ignoreCase = true) ||
                 holderName.contains("Leader data not yet available", ignoreCase = true)
 
     /** Name shown in UI — unknown holders read as an open seat, never as a placeholder string. */
     val displayName: String
-        get() = if (isNotFetched) "Not yet recorded" else holderName
+        get() = when {
+            holderName == WikiLeaders.VACANT -> "Vacant"
+            isNotFetched -> "Not yet recorded"
+            else -> holderName
+        }
 
     val jurisdiction: String
         get() = listOfNotNull(district, state).joinToString(", ").ifEmpty { "All India" }
@@ -591,6 +601,14 @@ data class PartyStructureUiState(
 
     // Every position of the active party, unfiltered. Map and Insights read this.
     val allNodes: List<PartyTreeNode> = emptyList(),
+
+    // Structure: orbit (default) or the top-down chart
+    val structureView: StructureView = StructureView.ORBIT,
+    val orgTree: OrgTree = OrgTree.Empty,
+    /** Unit in the centre of the orbit; null = the party's root. */
+    val orbitUnitId: String? = null,
+    /** Last successful Wikipedia check, ISO date. */
+    val leadersCheckedAt: String? = null,
 
     // Hierarchy chart
     val chart: HierarchyChart = HierarchyChart.Empty,

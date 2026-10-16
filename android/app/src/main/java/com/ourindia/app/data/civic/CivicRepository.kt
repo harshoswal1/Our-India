@@ -104,8 +104,10 @@ class CivicRepository @Inject constructor(
 
     val municipalCity: StateFlow<String?> get() = session.municipalCity
 
-    suspend fun feed(filter: String?, category: String?, lat: Double?, lng: Double?, authorityId: String? = null) =
-        call { api.feed(filter = filter, category = category, authorityId = authorityId, latitude = lat, longitude = lng).complaints }
+    suspend fun feed(filter: String?, category: String?, lat: Double?, lng: Double?, authorityId: String? = null, offset: Int = 0) =
+        call { api.feed(filter = filter, category = category, authorityId = authorityId, latitude = lat, longitude = lng, offset = offset).complaints }
+
+    suspend fun reportAbuse(id: String, reason: String) = call { api.reportAbuse(id, mapOf("reason" to reason)) }
 
     suspend fun detail(id: String) = call { api.detail(id) }
 

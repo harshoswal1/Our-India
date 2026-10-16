@@ -123,7 +123,7 @@ class IssuesViewModel @Inject constructor(
             val slowFlag = launch { delay(4000); _state.update { it.copy(slow = true) } }
             val s = _state.value
             val here = locationStore.location.value
-            val result = repo.feed(s.sort.apiValue, s.category?.code, here?.latitude, here?.longitude, s.city?.key)
+            val result = repo.feed(s.sort.apiValue, s.category?.serverCode, here?.latitude, here?.longitude, s.city?.key)
             slowFlag.cancel()
             result.onSuccess { list -> _state.update { it.copy(loading = false, slow = false, complaints = list) } }
                 // No fabricated fallback: the old client showed made-up Kolhapur complaints when offline.

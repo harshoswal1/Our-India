@@ -3,6 +3,7 @@ package com.ourindia.app
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.ourindia.app.data.leaders.LeaderUpdateWorker
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import javax.inject.Inject
@@ -19,6 +20,7 @@ class OurIndiaApplication : Application(), Configuration.Provider {
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
+        LeaderUpdateWorker.schedule(this)
     }
 
     override val workManagerConfiguration: Configuration
