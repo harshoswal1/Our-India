@@ -25,7 +25,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ourindia.ailawyer.data.ChatMessage
@@ -99,7 +102,7 @@ fun ChatScreen(
                 MessageBubble(
                     message = message,
                     onCopy = {
-                        clipboard.setText(AnnotatedString(message.content))
+                        clipboard.setText(AnnotatedString(cleanLegalText(message.content)))
                         Toast.makeText(context, "Copied legal response", Toast.LENGTH_SHORT).show()
                     }
                 )
@@ -304,13 +307,74 @@ private fun MessageBubble(message: ChatMessage, onCopy: () -> Unit) {
                 }
 
                 Text(
-                    text = message.content,
+                    text = if (isUser) AnnotatedString(message.content) else formatLegalResponse(message.content),
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (isUser) Color.White else LegalColors.OnSurface,
                     lineHeight = 22.sp,
                     fontSize = 13.5.sp
                 )
             }
+        }
+    }
+}
+
+/**
+ * Strips raw markdown symbols like hashtags, asterisks, and hyphens
+ * to produce clean, citizen-friendly plain text for copy-paste or sharing.
+ */
+private fun cleanLegalText(raw: String): String {
+    return raw.lines().joinToString("\n") { line ->
+        var trimmed = line.trimStart()
+        // Strip markdown heading hashes (#, ##, ###)
+        trimmed = trimmed.replace(Regex("^#{1,6}\\s*"), "")
+        // Replace bullet hyphens or asterisks (- or *) with clean 🔹 emoji
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("+ ")) {
+            "🔹 " + trimmed.substring(2).trim()
+        } else {
+            line
+        }
+    }.replace("**", "").replace("*", "")
+}
+
+/**
+ * Parses text into an AnnotatedString that styles **bold text** as bold
+ * and eliminates distracting AI markdown symbols (*, -, #) for a clean UI presentation.
+ */
+private fun formatLegalResponse(raw: String): AnnotatedString {
+    val preprocessed = raw.lines().joinToString("\n") { line ->
+        var trimmed = line.trimStart()
+        // Strip markdown heading hashes (#, ##, ###)
+        trimmed = trimmed.replace(Regex("^#{1,6}\\s*"), "")
+        // Replace raw bullets (- or * or +) with clean blue bullet emoji
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("+ ")) {
+            "🔹 " + trimmed.substring(2).trim()
+        } else {
+            line
+        }
+    }
+
+    return buildAnnotatedString {
+        val pattern = Regex("\\*\\*(.*?)\\*\\*")
+        var lastIndex = 0
+        val matches = pattern.findAll(preprocessed)
+
+        for (match in matches) {
+            val range = match.range
+            // Append preceding text and strip stray single asterisks
+            val before = preprocessed.substring(lastIndex, range.first).replace("*", "")
+            append(before)
+
+            // Append bold span without asterisks
+            val boldContent = match.groupValues[1].replace("*", "")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = LegalColors.Navy)) {
+                append(boldContent)
+            }
+            lastIndex = range.last + 1
+        }
+
+        if (lastIndex < preprocessed.length) {
+            val remaining = preprocessed.substring(lastIndex).replace("*", "")
+            append(remaining)
         }
     }
 }
