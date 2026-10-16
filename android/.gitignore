@@ -16,6 +16,8 @@ app/schemas/
 # Keystore (never commit)
 *.jks
 *.keystore
+# Shared debug key so CI and local builds install over each other (see root .gitignore).
+!debug.keystore
 
 # Secrets
 google-services.json

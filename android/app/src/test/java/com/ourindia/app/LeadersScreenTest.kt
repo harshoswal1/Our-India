@@ -3,6 +3,7 @@ package com.ourindia.app
 import androidx.room.Room
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -46,8 +47,15 @@ class LeadersScreenTest {
             vm.uiState.value.let { it.orbitUnitId != null && !it.isLoading }
         }
         compose.waitForIdle()
-        compose.onAllNodesWithText("Maharashtra").onFirst().performClick()
+        // From the national orbit, tap Maharashtra's circle (labels are hidden at overview zoom,
+        // so by its description) and check the orbit actually moved into it.
+        val root = vm.uiState.value.orgTree.rootIds.first()
+        compose.runOnIdle { vm.focusOrbit(root) }
         compose.waitForIdle()
+        compose.onAllNodesWithContentDescription("Maharashtra").onFirst().performClick()
+        compose.waitForIdle()
+        val now = vm.uiState.value.orbitUnitId
+        org.junit.Assert.assertEquals("Maharashtra", vm.uiState.value.orgTree.units[now]?.title)
         db.close()
     }
 }

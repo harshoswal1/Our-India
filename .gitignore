@@ -24,6 +24,9 @@ local.properties
 *.crt
 *.jks
 *.keystore
+# Shared debug key (standard "android" passwords, not a release key) so CI and every
+# teammate's builds install over each other. Never put a release keystore here.
+!android/debug.keystore
 google-services.json
 
 # ---- OS files ----

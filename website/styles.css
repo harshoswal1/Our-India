@@ -77,6 +77,7 @@ section { scroll-margin-top: 72px; }
 .grid { display: grid; gap: 20px; }
 .grid.two { grid-template-columns: repeat(2, 1fr); }
 .grid.three { grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.grid.four { grid-template-columns: repeat(4, 1fr); gap: 32px; }
 .card { background: var(--surface); border: 1px solid var(--outline); border-radius: 24px; padding: 28px; }
 .card-civic { background: var(--civic-soft); border-color: transparent; }
 .card-civic h3 { color: var(--civic-deep); }
@@ -122,6 +123,8 @@ section { scroll-margin-top: 72px; }
   .hero, .download { grid-template-columns: 1fr; gap: 32px; padding-top: 40px; padding-bottom: 48px; }
   .orbit svg { max-width: 300px; }
   .grid.two, .grid.three { grid-template-columns: 1fr; }
+  /* Four people read as two pairs on a phone, not a long single column. */
+  .grid.four { grid-template-columns: 1fr 1fr; gap: 28px 16px; }
   .steps { grid-template-columns: 1fr 1fr; }
   .nav a:not(.btn) { display: none; }
   .band { padding: 56px 0; }

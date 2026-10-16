@@ -58,6 +58,18 @@ android {
         }
     }
 
+    signingConfigs {
+        // One debug key for the team and CI (android/debug.keystore), so an APK from the website
+        // installs over one built on a laptop. Each machine's own random key made every update
+        // fail with "App not installed".
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The website favicon (website/favicon.svg) on the adaptive-icon grid: dashed saffron orbit,
+     white centre, saffron and green satellites. Vector drawables can't dash a stroke, so the
+     ring is drawn as ten arcs. Everything sits inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M57.44,32.27 A22,22 0 0,1 63.99,34.40 M69.56,38.44 A22,22 0 0,1 73.60,44.01 M75.73,50.56 A22,22 0 0,1 75.73,57.44 M73.60,63.99 A22,22 0 0,1 69.56,69.56 M63.99,73.60 A22,22 0 0,1 57.44,75.73 M50.56,75.73 A22,22 0 0,1 44.01,73.60 M38.44,69.56 A22,22 0 0,1 34.40,63.99 M32.27,57.44 A22,22 0 0,1 32.27,50.56 M34.40,44.01 A22,22 0 0,1 38.44,38.44 M44.01,34.40 A22,22 0 0,1 50.56,32.27"
+        android:strokeColor="#E85D04"
+        android:strokeWidth="3.3"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54 m-9.9,0 a9.9,9.9 0 1,0 19.8,0 a9.9,9.9 0 1,0 -19.8,0" />
+    <path
+        android:fillColor="#E85D04"
+        android:pathData="M54,32 m-5.5,0 a5.5,5.5 0 1,0 11,0 a5.5,5.5 0 1,0 -11,0" />
+    <path
+        android:fillColor="#1B6E4A"
+        android:pathData="M73.8,65 m-5.5,0 a5.5,5.5 0 1,0 11,0 a5.5,5.5 0 1,0 -11,0" />
+</vector>

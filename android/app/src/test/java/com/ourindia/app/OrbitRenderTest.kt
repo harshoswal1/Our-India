@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import com.ourindia.app.ui.partystructure.HierarchyLevel
@@ -73,7 +74,7 @@ class OrbitRenderTest {
                 PartyOrbitView(t, state.id, PartyCatalog.getParty("BJP").color, null, {}, {}, Modifier.fillMaxSize())
             }
         }
-        compose.onAllNodesWithText(state.title).onFirst().performClick()
+        compose.onAllNodesWithContentDescription(t.units.getValue(state.childIds.first()).title).onFirst().performClick()
         compose.waitForIdle()
     }
 }

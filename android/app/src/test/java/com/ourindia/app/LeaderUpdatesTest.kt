@@ -91,5 +91,18 @@ class LeaderUpdatesTest {
         }
         // BJP's 36 state units fit in three rings, not one crammed circle.
         assertEquals(3, orbitSlots(36).maxOf { it.ring } + 1)
+
+        // Disc codes never repeat within one ring: initials once gave Maharashtra and Manipur both "MA".
+        assertEquals("MH", com.ourindia.app.ui.partystructure.unitCode("Maharashtra"))
+        assertEquals("MN", com.ourindia.app.ui.partystructure.unitCode("Manipur"))
+        PartySeedData.parties.forEach { p ->
+            val tree = com.ourindia.app.ui.partystructure.buildOrgTree(PartySeedData.nodesFor(p).map {
+                com.ourindia.app.ui.partystructure.PartyTreeNode(it.id, it.partyName, com.ourindia.app.ui.partystructure.HierarchyLevel.fromString(it.level), it.parentId, it.roleTitle, it.holderName, it.state, it.district)
+            })
+            tree.units.values.forEach { u ->
+                val codes = com.ourindia.app.ui.partystructure.unitCodes(u.childIds.map { tree.units.getValue(it).title })
+                assertEquals("$p/${u.title}: $codes", codes.size, codes.toSet().size)
+            }
+        }
     }
 }
