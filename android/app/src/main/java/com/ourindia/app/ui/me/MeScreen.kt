@@ -156,7 +156,7 @@ fun MeScreen(onSignIn: () -> Unit, onOpenIssue: (String) -> Unit, onShowTutorial
             }
             item {
                 AboutRow(Icons.Outlined.Balance, "AI Lawyer answers come from an AI model",
-                    "Questions are sent to Groq and answered by an open model. It can be wrong or out of date: check anything important with an advocate or free legal aid (NALSA 15100).")
+                    "Questions go through the Our India server to Groq and are answered by an open model. It can be wrong or out of date: check anything important with an advocate or free legal aid (NALSA 15100).")
             }
             item { Muted("Our India ${BuildConfig.VERSION_NAME}") }
         }

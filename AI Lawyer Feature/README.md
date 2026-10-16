@@ -49,7 +49,8 @@ Search and convert legacy Indian Penal Code (IPC) sections to the newly active B
 The AI Lawyer is part of the main app (the standalone `:ailawyer` module was merged in on 2026-10-17; it is in git history before that). Open it from the violet scales button on any tab.
 
 - Code: `android/app/src/main/java/com/ourindia/app/data/lawyer/` (Groq client, legal data) and `.../ui/lawyer/` (screens).
-- Key: put `GROQ_API_KEY=...` in `android/local.properties`. Without it, Ask and Draft explain that AI isn't set up; Sections (IPC → BNS) and Rights work offline.
-- Build: `./gradlew :app:assembleDebug`.
-
-**Before a public release:** the key is compiled into the APK and can be extracted. Route requests through a small server that holds the key.
+- Server: the app calls `https://our-india-five.vercel.app/api/lawyer` (`api/lawyer.js` at the repo root). The Groq key lives only in Vercel's environment variables, along with the system prompts, a per-address rate limit (20 questions per 10 minutes) and size limits. Nothing secret is in the APK.
+- Vercel setup: Project → Settings → Environment Variables → add `GROQ_API_KEY`, then redeploy. Optional: `LAWYER_APP_TOKEN` (put the same value in `android/local.properties` as `LAWYER_APP_TOKEN=...`).
+- Other endpoint (e.g. a preview deploy): set `LAWYER_API_URL=...` in `android/local.properties`.
+- Sections (IPC → BNS) and Rights work offline.
+- Build: `./gradlew :app:assembleDebug`. Proxy tests: `node --test tests/lawyer-proxy.test.js`.

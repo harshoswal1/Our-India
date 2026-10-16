@@ -40,9 +40,13 @@ android {
             "\"${localProperties.getProperty("CIVIC_API_URL", "https://citizencomplaint.onrender.com/api/v1/")}\"")
         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY",
             "\"${localProperties.getProperty("SUPABASE_PUBLISHABLE_KEY", "")}\"")
-        // AI Lawyer. Blank = the Ask and Draft tabs say so; the offline tabs still work.
-        buildConfigField("String", "GROQ_API_KEY",
-            "\"${localProperties.getProperty("GROQ_API_KEY", "")}\"")
+        // AI Lawyer goes through our Vercel function, which holds the Groq key (api/lawyer.js).
+        // The optional app token must match LAWYER_APP_TOKEN on Vercel; it is not a secret,
+        // only a speed bump for people calling the URL directly.
+        buildConfigField("String", "LAWYER_API_URL",
+            "\"${localProperties.getProperty("LAWYER_API_URL", "https://our-india-five.vercel.app/api/lawyer")}\"")
+        buildConfigField("String", "LAWYER_APP_TOKEN",
+            "\"${localProperties.getProperty("LAWYER_APP_TOKEN", "")}\"")
 
         // Inject Maps API key into AndroidManifest.xml
         manifestPlaceholders["MAPS_API_KEY"] =

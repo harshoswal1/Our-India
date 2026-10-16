@@ -6,6 +6,7 @@ import com.ourindia.app.data.lawyer.ChatMessage
 import com.ourindia.app.data.lawyer.DocumentType
 import com.ourindia.app.data.lawyer.IpcBnsItem
 import com.ourindia.app.data.lawyer.LawyerClient
+import com.ourindia.app.data.lawyer.LawyerMode
 import com.ourindia.app.data.lawyer.LegalKnowledge
 import com.ourindia.app.data.lawyer.tidyLegalText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,7 +97,7 @@ Number the paragraphs: the parties, the facts in order, the law breached (cite B
 Leave [square-bracket] placeholders for anything not given. End with a signature block.
 """
         viewModelScope.launch {
-            LawyerClient.ask(prompt, system = LawyerClient.DRAFTER_PROMPT)
+            LawyerClient.ask(prompt, mode = LawyerMode.DRAFT)
                 .onSuccess { r -> _state.update { it.copy(drafting = false, draftResult = tidyLegalText(r).replace("**", "")) } }
                 .onFailure { e -> _state.update { it.copy(drafting = false, draftError = e.message) } }
         }

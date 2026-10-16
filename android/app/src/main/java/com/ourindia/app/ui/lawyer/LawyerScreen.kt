@@ -168,7 +168,7 @@ private fun Welcome(onSuggestion: (String) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Outlined.Lock, contentDescription = null, tint = CivicColors.TextMuted, modifier = Modifier.size(16.dp).padding(top = 2.dp))
             Text(
-                "Questions are sent to Groq's AI service. Leave out Aadhaar, bank and password details. This is general information, not a substitute for an advocate.",
+                "Questions pass through the Our India server to Groq's AI service. Leave out Aadhaar, bank and password details. This is general information, not a substitute for an advocate.",
                 style = MaterialTheme.typography.bodySmall,
                 color = CivicColors.TextSecondary
             )

@@ -45,12 +45,13 @@ class LawyerTest {
         assertTrue(LegalKnowledge.ipcBnsList.single { it.ipcSection == "420" }.bnsSection == "318(4)")
     }
 
-    /** Builds without a Groq key: every tab must still open, and the offline tabs must work. */
+    /** Every tab opens with no network; the offline tabs work on their own. */
     @Test
-    fun everyTabOpensWithoutAKey() {
+    fun everyTabOpens() {
         val vm = LawyerViewModel()
         compose.setContent { OurIndiaTheme { LawyerScreen(onClose = {}, viewModel = vm) } }
-        compose.onAllNodesWithText("AI answers aren't set up", substring = true).onFirst().assertIsDisplayed()
+        // The proxy URL is built in, so the Ask tab offers starter questions.
+        compose.onAllNodesWithText("My cheque bounced", substring = true).onFirst().assertIsDisplayed()
 
         compose.onNodeWithText("Sections").performClick()
         compose.onAllNodesWithText("e.g. 420 or theft", substring = true).onFirst().performTextInput("420")
