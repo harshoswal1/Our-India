@@ -232,7 +232,7 @@ private fun InputBar(s: LawyerUiState, vm: LawyerViewModel) {
             OutlinedTextField(
                 value = s.input,
                 onValueChange = vm::setInput,
-                enabled = LawyerClient.configured,
+                // Always typeable: a disabled field never gets the keyboard, which read as broken.
                 placeholder = { Text("Describe your situation…") },
                 maxLines = 5,
                 shape = RoundedCornerShape(24.dp),

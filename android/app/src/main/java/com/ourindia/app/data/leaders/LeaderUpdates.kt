@@ -119,8 +119,10 @@ object WikiLeaders {
     }
 
     private val REF = Regex("<ref[^>]*/>|<ref[^>]*>.*?</ref>|<ref.*$|<!--.*?-->")
-    private val LINK = Regex("""\[\[([^\]|]+)(?:\|([^\]]+))?]]""")
-    private val TEMPLATE = Regex("""\{\{[^{}]*}}""")
+    // Every bracket and brace escaped: Android's ICU regex rejects a bare "}" that the desktop
+    // JVM accepts, so "\{\{[^{}]*}}" passed every unit test and crashed every phone.
+    private val LINK = Regex("""\[\[([^\]|]+)(?:\|([^\]]+))?\]\]""")
+    private val TEMPLATE = Regex("""\{\{[^\{\}]*\}\}""")
     private val TAG = Regex("<[^>]+>")
     private val HONORIFIC = Regex("""^(Dr\.?|Shri|Smt\.?|Adv\.?|Prof\.?)\s+""", RegexOption.IGNORE_CASE)
 
