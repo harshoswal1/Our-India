@@ -21,6 +21,7 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.OurIndia"
+        android:usesCleartextTraffic="true"
         tools:targetApi="34">
 
         <!-- Google Maps API Key (injected from local.properties) -->

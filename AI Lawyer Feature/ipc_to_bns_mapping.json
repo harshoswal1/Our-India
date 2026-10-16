@@ -1,0 +1,130 @@
+[
+  {
+    "ipc_section": "302",
+    "bns_section": "103(1)",
+    "offence": "Murder",
+    "punishment": "Death or imprisonment for life, and fine",
+    "bailable": "Non-bailable",
+    "triable_by": "Court of Session"
+  },
+  {
+    "ipc_section": "304A",
+    "bns_section": "106(1)",
+    "offence": "Causing death by negligence (Rash driving/act)",
+    "punishment": "Imprisonment up to 5 years, and fine",
+    "bailable": "Bailable",
+    "triable_by": "Magistrate First Class"
+  },
+  {
+    "ipc_section": "307",
+    "bns_section": "109",
+    "offence": "Attempt to murder",
+    "punishment": "Imprisonment up to 10 years and fine; if hurt caused, life imprisonment",
+    "bailable": "Non-bailable",
+    "triable_by": "Court of Session"
+  },
+  {
+    "ipc_section": "378 / 379",
+    "bns_section": "303(2)",
+    "offence": "Theft",
+    "punishment": "Imprisonment up to 3 years, or fine, or both (Community service if value < Rs 5,000)",
+    "bailable": "Non-bailable",
+    "triable_by": "Any Magistrate"
+  },
+  {
+    "ipc_section": "420",
+    "bns_section": "318(4)",
+    "offence": "Cheating and dishonestly inducing delivery of property",
+    "punishment": "Imprisonment up to 7 years, and fine",
+    "bailable": "Non-bailable",
+    "triable_by": "Magistrate First Class"
+  },
+  {
+    "ipc_section": "406",
+    "bns_section": "316(2)",
+    "offence": "Criminal breach of trust",
+    "punishment": "Imprisonment up to 5 years, or fine, or both",
+    "bailable": "Non-bailable",
+    "triable_by": "Magistrate First Class"
+  },
+  {
+    "ipc_section": "498A",
+    "bns_section": "85 / 86",
+    "offence": "Cruelty by husband or relatives of husband (Dowry harassment)",
+    "punishment": "Imprisonment up to 3 years, and fine",
+    "bailable": "Non-bailable",
+    "triable_by": "Magistrate First Class"
+  },
+  {
+    "ipc_section": "500",
+    "bns_section": "356",
+    "offence": "Defamation",
+    "punishment": "Simple imprisonment up to 2 years, or fine, or both, or community service",
+    "bailable": "Bailable",
+    "triable_by": "Court of Session / Magistrate"
+  },
+  {
+    "ipc_section": "354",
+    "bns_section": "74",
+    "offence": "Assault or criminal force to woman with intent to outrage modesty",
+    "punishment": "Imprisonment 1 to 5 years, and fine",
+    "bailable": "Non-bailable",
+    "triable_by": "Any Magistrate"
+  },
+  {
+    "ipc_section": "506",
+    "bns_section": "351(2)",
+    "offence": "Criminal intimidation",
+    "punishment": "Imprisonment up to 2 years, or fine, or both",
+    "bailable": "Bailable",
+    "triable_by": "Any Magistrate"
+  },
+  {
+    "ipc_section": "323",
+    "bns_section": "115(2)",
+    "offence": "Voluntarily causing hurt",
+    "punishment": "Imprisonment up to 1 year, or fine up to Rs 10,000, or both",
+    "bailable": "Bailable",
+    "triable_by": "Any Magistrate"
+  },
+  {
+    "ipc_section": "325",
+    "bns_section": "117(2)",
+    "offence": "Voluntarily causing grievous hurt",
+    "punishment": "Imprisonment up to 7 years, and fine",
+    "bailable": "Bailable",
+    "triable_by": "Any Magistrate"
+  },
+  {
+    "ipc_section": "392",
+    "bns_section": "309(4)",
+    "offence": "Robbery",
+    "punishment": "Rigorous imprisonment up to 10 years, and fine",
+    "bailable": "Non-bailable",
+    "triable_by": "Magistrate First Class"
+  },
+  {
+    "ipc_section": "395",
+    "bns_section": "310(2)",
+    "offence": "Dacoity",
+    "punishment": "Imprisonment for life, or rigorous imprisonment up to 10 years, and fine",
+    "bailable": "Non-bailable",
+    "triable_by": "Court of Session"
+  },
+  {
+    "ipc_section": "141 / 143",
+    "bns_section": "189",
+    "offence": "Unlawful assembly",
+    "punishment": "Imprisonment up to 6 months, or fine, or both",
+    "bailable": "Bailable",
+    "triable_by": "Any Magistrate"
+  },
+  {
+    "ipc_section": "120B",
+    "bns_section": "61(2)",
+    "offence": "Criminal conspiracy",
+    "punishment": "Same as abetment of offence",
+    "bailable": "Depends on offence",
+    "triable_by": "Court by which offence is triable"
+  }
+]

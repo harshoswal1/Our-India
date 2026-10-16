@@ -21,3 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Our India"
 include(":app")
+include(":ailawyer")
+
