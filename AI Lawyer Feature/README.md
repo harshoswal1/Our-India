@@ -45,11 +45,11 @@ Search and convert legacy Indian Penal Code (IPC) sections to the newly active B
 
 ---
 
-## Standalone Android Application & APK
-A dedicated Android module `:ailawyer` is configured inside `android/ailawyer` with its own `applicationId`: `com.ourindia.ailawyer`.
-Build command:
-```bash
-./gradlew :ailawyer:assembleDebug
-```
-Output APK:
-`android/ailawyer/build/outputs/apk/debug/ailawyer-debug.apk`
+## In the Our India app
+The AI Lawyer is part of the main app (the standalone `:ailawyer` module was merged in on 2026-10-17; it is in git history before that). Open it from the violet scales button on any tab.
+
+- Code: `android/app/src/main/java/com/ourindia/app/data/lawyer/` (Groq client, legal data) and `.../ui/lawyer/` (screens).
+- Key: put `GROQ_API_KEY=...` in `android/local.properties`. Without it, Ask and Draft explain that AI isn't set up; Sections (IPC → BNS) and Rights work offline.
+- Build: `./gradlew :app:assembleDebug`.
+
+**Before a public release:** the key is compiled into the APK and can be extracted. Route requests through a small server that holds the key.

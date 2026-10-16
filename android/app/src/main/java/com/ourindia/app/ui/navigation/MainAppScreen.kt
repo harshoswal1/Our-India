@@ -53,6 +53,8 @@ import com.ourindia.app.ui.civic.IssueDetailScreen
 import com.ourindia.app.ui.civic.IssuesScreen
 import com.ourindia.app.ui.civic.ReportScreen
 import com.ourindia.app.ui.home.HomeScreen
+import com.ourindia.app.ui.lawyer.LawyerScreen
+import androidx.compose.material.icons.outlined.Balance
 import com.ourindia.app.ui.me.MeScreen
 import com.ourindia.app.ui.partystructure.PartyStructureScreen
 import com.ourindia.app.ui.theme.CivicColors
@@ -65,6 +67,7 @@ private object Routes {
     const val REPORT = "report"
     const val ISSUE = "issue/{id}"
     const val AUTH = "auth"
+    const val LAWYER = "lawyer"
 
     fun leaders(party: String? = null, node: String? = null): String = when {
         party == null -> "leaders"
@@ -145,8 +148,28 @@ fun MainAppScreen() {
     val route = entry?.destination?.route.orEmpty()
     val onTab = route in setOf(Routes.HOME, Routes.ISSUES, Routes.ME) || (route == Routes.LEADERS && !leadersImmersive)
 
+    var lawyerUsed by remember { mutableStateOf(firstRun.lawyerOpened) }
+
     Scaffold(
         bottomBar = { if (onTab) BottomBar(nav, route) },
+        // AI Lawyer: reachable from every tab, never over a form, chart workspace or chat.
+        floatingActionButton = {
+            if (onTab) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        firstRun.lawyerOpened = true
+                        lawyerUsed = true
+                        nav.navigate(Routes.LAWYER)
+                    },
+                    // Labelled until first used, then just the scales so it doesn't crowd the feed.
+                    expanded = !lawyerUsed,
+                    icon = { Icon(Icons.Outlined.Balance, contentDescription = "AI Lawyer") },
+                    text = { Text("Ask a lawyer") },
+                    containerColor = CivicColors.Violet,
+                    contentColor = Color.White
+                )
+            }
+        },
         containerColor = CivicColors.Background
     ) { inner ->
         NavHost(
@@ -205,6 +228,9 @@ fun MainAppScreen() {
             }
             composable(Routes.AUTH) {
                 AuthScreen(onClose = { nav.popBackStack() }, onSignedIn = { nav.popBackStack() })
+            }
+            composable(Routes.LAWYER) {
+                LawyerScreen(onClose = { nav.popBackStack() })
             }
         }
     }

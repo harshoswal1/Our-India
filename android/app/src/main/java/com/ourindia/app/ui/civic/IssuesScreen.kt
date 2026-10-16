@@ -193,17 +193,7 @@ fun IssuesScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CivicColors.Background)
             )
         },
-        floatingActionButton = {
-            if (tab == 0) {
-                ExtendedFloatingActionButton(
-                    onClick = onReport,
-                    containerColor = CivicColors.Civic,
-                    contentColor = Color.White,
-                    text = { Text("Report an issue") },
-                    icon = { Icon(Icons.Outlined.Inbox, contentDescription = null) }
-                )
-            }
-        },
+        // No FAB here: Report sits in the bottom bar, and bottom-right belongs to the AI Lawyer.
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = CivicColors.Background
     ) { padding ->

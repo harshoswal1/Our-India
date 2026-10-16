@@ -43,6 +43,9 @@ class FirstRunPrefs(context: Context) {
     var locationAsked: Boolean
         get() = prefs.getBoolean("location_asked", false)
         set(v) = prefs.edit().putBoolean("location_asked", v).apply()
+    var lawyerOpened: Boolean
+        get() = prefs.getBoolean("lawyer_opened", false)
+        set(v) = prefs.edit().putBoolean("lawyer_opened", v).apply()
     var locationNeverAsk: Boolean
         get() = prefs.getBoolean("location_never_ask", false)
         set(v) = prefs.edit().putBoolean("location_never_ask", v).apply()
@@ -84,6 +87,12 @@ private val STEPS = listOf(
         "Who leads where",
         "Leaders shows each party's organisation as an orbit: the head in the middle, their units around them.",
         listOf("Tap a circle to move into it. Back steps out.", "Pinch to zoom; switch to Chart for the classic tree.", "Every name links to its source. Party heads are re-checked on Wikipedia every month.")
+    ),
+    Step(
+        Icons.Outlined.Balance, CivicColors.Violet, CivicColors.VioletContainer,
+        "Ask a lawyer",
+        "The violet button on every tab opens the AI Lawyer.",
+        listOf("Ask about police, property, money or consumer problems in plain words.", "Draft a legal notice, police complaint or RTI application.", "Look up old IPC sections under the new BNS, your rights, and helplines.")
     ),
     Step(
         Icons.Outlined.MyLocation, CivicColors.CivicDeep, CivicColors.CivicContainer,

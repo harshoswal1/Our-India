@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Policy
@@ -152,6 +153,10 @@ fun MeScreen(onSignIn: () -> Unit, onOpenIssue: (String) -> Unit, onShowTutorial
                     AboutRow(Icons.Outlined.Science, "NagrikVoice deliveries are simulated",
                         "The server has no mail provider yet, so \"delivered\" reports are marked as demo deliveries. Rankings include them.")
                 }
+            }
+            item {
+                AboutRow(Icons.Outlined.Balance, "AI Lawyer answers come from an AI model",
+                    "Questions are sent to Groq and answered by an open model. It can be wrong or out of date: check anything important with an advocate or free legal aid (NALSA 15100).")
             }
             item { Muted("Our India ${BuildConfig.VERSION_NAME}") }
         }
