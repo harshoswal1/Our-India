@@ -10,7 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddRoad
 import androidx.compose.material.icons.outlined.HealthAndSafety
 import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.TaskAlt
@@ -74,7 +74,7 @@ enum class IssueCategory(val code: String, val serverCode: String, val label: St
     DISASTER("DISASTER_MANAGEMENT", "DISASTER_AND_SAFETY", "Disaster Management", Icons.Outlined.WarningAmber, listOf("Flood", "Fallen tree", "Wall collapse risk", "Fire hazard", "Landslide")),
     ELECTRICITY("ELECTRICITY_MSEDCL", "ELECTRICITY_AND_LIGHTING", "Electricity (MSEDCL)", Icons.Outlined.Lightbulb, listOf("Street light not working", "Exposed wiring", "Leaning pole", "Power outage", "Transformer issue")),
     HEALTHCARE("HEALTHCARE_DISTRICT_HEALTH", "PUBLIC_HEALTH_AND_SANITATION", "Healthcare", Icons.Outlined.HealthAndSafety, listOf("Mosquito breeding", "Sanitation issue", "Hospital complaint", "Vaccination", "Epidemic concern")),
-    TAX("PROPERTY_TAX", "PROPERTY_TAX", "Property Tax", Icons.Outlined.ReceiptLong, listOf("Wrong assessment", "Receipt not issued", "Billing dispute", "Online portal issue")),
+    TAX("PROPERTY_TAX", "PROPERTY_TAX", "Property Tax", Icons.AutoMirrored.Outlined.ReceiptLong, listOf("Wrong assessment", "Receipt not issued", "Billing dispute", "Online portal issue")),
     PWD("PUBLIC_WORKS_PWD", "ROADS_AND_INFRASTRUCTURE", "Public Works (PWD)", Icons.Outlined.AddRoad, listOf("Pothole", "Broken footpath", "Damaged divider", "Road repair", "Bridge issue")),
     WATER("WATER_DEPARTMENT", "WATER_AND_DRAINAGE", "Water Dept.", Icons.Outlined.WaterDrop, listOf("Pipeline leak", "No water supply", "Contaminated water", "Blocked drain", "Waterlogging"));
 

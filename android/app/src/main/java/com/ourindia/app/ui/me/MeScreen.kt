@@ -10,9 +10,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Balance
-import androidx.compose.material.icons.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.*
@@ -126,7 +126,7 @@ fun MeScreen(onSignIn: () -> Unit, onOpenIssue: (String) -> Unit, onShowTutorial
                 items(state.supported, key = { "v-${it.id}" }) { c -> MyIssueRow(c) { onOpenIssue(c.id) } }
                 item {
                     OutlinedButton(onClick = { confirmSignOut = true }, border = BorderStroke(1.dp, CivicColors.Outline), modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Outlined.Logout, contentDescription = null, tint = CivicColors.Navy, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = null, tint = CivicColors.Navy, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Sign out", color = CivicColors.Navy)
                     }
@@ -136,7 +136,7 @@ fun MeScreen(onSignIn: () -> Unit, onOpenIssue: (String) -> Unit, onShowTutorial
             item {
                 Surface(onClick = onShowTutorial, shape = RoundedCornerShape(16.dp), color = CivicColors.Surface, border = BorderStroke(1.dp, CivicColors.Outline)) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Outlined.HelpOutline, contentDescription = null, tint = CivicColors.Navy)
+                        Icon(Icons.AutoMirrored.Outlined.HelpOutline, contentDescription = null, tint = CivicColors.Navy)
                         Text("How Our India works", style = MaterialTheme.typography.titleSmall, color = CivicColors.Navy, modifier = Modifier.weight(1f))
                     }
                 }
