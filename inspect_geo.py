@@ -1,10 +1,14 @@
 import json
 import sys
+from pathlib import Path
+
+base_dir = Path(__file__).resolve().parent
+data_dir = base_dir / "Data"
 
 files = [
-    "d:\\Our-India\\Data\\INDIA_STATES.geojson",
-    "d:\\Our-India\\Data\\INDIA_DISTRICTS.geojson",
-    "d:\\Our-India\\Data\\INDIAN_SUB_DISTRICTS.geojson"
+    data_dir / "INDIA_STATES.geojson",
+    data_dir / "INDIA_DISTRICTS.geojson",
+    data_dir / "INDIAN_SUB_DISTRICTS.geojson"
 ]
 
 for f in files:

@@ -2,9 +2,11 @@ import os
 import subprocess
 import gzip
 import shutil
+from pathlib import Path
 
-data_dir = "d:\\Our-India\\Data"
-out_dir = "d:\\Our-India\\android\\app\\src\\main\\assets\\geo"
+base_dir = Path(__file__).resolve().parent
+data_dir = str(base_dir / "Data")
+out_dir = str(base_dir / "android" / "app" / "src" / "main" / "assets" / "geo")
 
 os.makedirs(out_dir, exist_ok=True)
 
