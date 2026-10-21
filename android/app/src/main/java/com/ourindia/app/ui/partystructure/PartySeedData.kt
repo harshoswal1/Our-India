@@ -19,7 +19,25 @@ object PartySeedData {
     const val SEED_DATE = "2026-10-14.2"
     private const val NYF = "Not yet fetched"
 
-    fun nodesFor(party: String): List<PartyNodeEntity> = seeds[party]?.nodes.orEmpty()
+    fun nodesFor(party: String): List<PartyNodeEntity> {
+        seeds[party]?.nodes?.let { return it }
+        val meta = PartyCatalog.parties.firstOrNull { it.shortName.equals(party, ignoreCase = true) } ?: return emptyList()
+        val level = if (meta.classification == PartyClassification.NATIONAL) "NATIONAL" else "STATE"
+        val role = if (meta.classification == PartyClassification.NATIONAL) "National President" else "State President (${meta.primaryState ?: "State"})"
+        return listOf(
+            PartyNodeEntity(
+                id = "${meta.shortName}_ROOT",
+                partyName = meta.shortName,
+                level = level,
+                parentId = null,
+                roleTitle = role,
+                holderName = meta.president.ifBlank { NYF },
+                state = meta.primaryState,
+                district = null,
+                versionDate = SEED_DATE
+            )
+        )
+    }
 
     fun sourceFor(nodeId: String): VerifiedSource? = sources[nodeId]
 
@@ -109,6 +127,13 @@ object PartySeedData {
 
     private val aapStates = src("AAP expands national executive, adds 20 state conveners", "The Hans India", "2026-09",
         "https://www.thehansindia.com/news/cities/new-delhi/aap-expands-national-executive-adds-20-state-conveners-1120933")
+
+    private val ncpAjit = src("Ajit Pawar elected National President of Nationalist Congress Party", "The Indian Express", "2024-02",
+        "https://indianexpress.com/article/cities/mumbai/ajit-pawar-national-president-ncp-convention-9162464/")
+    private val ncpPraful = src("Praful Patel — National Working President, NCP", "Wikipedia", "2026-10-13",
+        "https://en.wikipedia.org/wiki/Praful_Patel")
+    private val ncpTatkare = src("Sunil Tatkare — Maharashtra State President, NCP", "The Hindu", "2024-07",
+        "https://www.thehindu.com/news/national/other-states/sunil-tatkare-reappointed-as-ncp-maharashtra-president/article68412854.ece")
 
     private val ncpPawar = src("NCP (SP) chief Sharad Pawar chairs review meeting to revive party", "Deccan Herald", "2026",
         "https://www.deccanherald.com/india/maharashtra/ncp-sp-chief-sharad-pawar-chairs-review-meeting-to-assess-political-situation-revive-party-4010003")
@@ -655,15 +680,24 @@ object PartySeedData {
             )
         },
 
-        seed("NCP(SP)") {
-            val n = held("NCP_NAT_PRES", "NATIONAL", null, "National President", "Sharad Pawar", ncpPawar)
-            held("NCP_NAT_WP", "NATIONAL_WORKING", n, "National Working President", "Supriya Sule", ncpSule)
-            val mh = held("NCP_STATE_MH", "STATE", n, "State President (Maharashtra)", "Shashikant Shinde", ncpShinde, "Maharashtra")
-            // Pune city was split into two units in August 2026.
-            held("NCP_DIST_PUNE_W", "DISTRICT", mh, "Pune West City President", "Vishal Tambe", ncpPune, "Maharashtra", "Pune")
-            held("NCP_DIST_PUNE_E", "DISTRICT", mh, "Pune East City President", "Shrikant Patil", ncpPune, "Maharashtra", "Pune")
+        seed("NCP") {
+            val n = held("NCP_NAT_PRES", "NATIONAL", null, "National President", "Ajit Pawar", ncpAjit)
+            held("NCP_NAT_WP", "NATIONAL_WORKING", n, "National Working President", "Praful Patel", ncpPraful)
+            val mh = held("NCP_STATE_MH", "STATE", n, "State President (Maharashtra)", "Sunil Tatkare", ncpTatkare, "Maharashtra")
             open("NCP_DIST_MUM", "DISTRICT", mh, "Mumbai President", "Maharashtra", "Mumbai")
-            open("NCP_DIST_SATARA", "DISTRICT", mh, "Satara District President", "Maharashtra", "Satara")
+            open("NCP_DIST_PUNE", "DISTRICT", mh, "Pune District President", "Maharashtra", "Pune")
+            open("NCP_DIST_BARAMATI", "DISTRICT", mh, "Baramati Incharge", "Maharashtra", "Pune")
+        },
+
+        seed("NCP(SP)") {
+            val n = held("NCPSP_NAT_PRES", "NATIONAL", null, "National President", "Sharad Pawar", ncpPawar)
+            held("NCPSP_NAT_WP", "NATIONAL_WORKING", n, "National Working President", "Supriya Sule", ncpSule)
+            val mh = held("NCPSP_STATE_MH", "STATE", n, "State President (Maharashtra)", "Shashikant Shinde", ncpShinde, "Maharashtra")
+            // Pune city was split into two units in August 2026.
+            held("NCPSP_DIST_PUNE_W", "DISTRICT", mh, "Pune West City President", "Vishal Tambe", ncpPune, "Maharashtra", "Pune")
+            held("NCPSP_DIST_PUNE_E", "DISTRICT", mh, "Pune East City President", "Shrikant Patil", ncpPune, "Maharashtra", "Pune")
+            open("NCPSP_DIST_MUM", "DISTRICT", mh, "Mumbai President", "Maharashtra", "Mumbai")
+            open("NCPSP_DIST_SATARA", "DISTRICT", mh, "Satara District President", "Maharashtra", "Satara")
         },
 
         seed("TMC") {
