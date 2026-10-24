@@ -141,8 +141,13 @@ class CivicRepository @Inject constructor(
     } catch (e: HttpException) {
         val body = e.response()?.errorBody()?.string().orEmpty()
         val parsed = runCatching { json.decodeFromString<ApiError>(body) }.getOrNull()
-        val msg = parsed?.error ?: parsed?.message ?: when (e.code()) {
-            401 -> "Please sign in again"
+        // The server's database is wiped on restart (free hosting), so a saved login can point at
+        // a deleted user: newer servers answer 401, older ones fail on the users foreign key.
+        // Either way the session is dead; drop it so the app asks to sign in again.
+        val msg = if (e.code() == 401 || body.contains("FOREIGN KEY", ignoreCase = true)) {
+            session.signOut()
+            "Your session has expired. Please sign in again."
+        } else parsed?.error ?: parsed?.message ?: when (e.code()) {
             404 -> "Not found"
             else -> "The NagrikVoice server returned an error (${e.code()})"
         }
